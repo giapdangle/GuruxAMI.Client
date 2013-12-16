@@ -2044,13 +2044,13 @@ namespace GuruxAMI.Client
         /// <remarks>
         /// DC removes task after it is compleated.
         /// </remarks>
-        /// <param name="permamently">Is item removed permamently.</param>
-        public void RemoveTask(GXAmiTask task, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>
+        public void RemoveTask(GXAmiTask task, bool permanently)
         {
 			try
 			{				
 				GXTaskDeleteRequest req = new GXTaskDeleteRequest(new GXAmiTask[] { task });
-				GXTaskDeleteResponse res = Client.Delete(req);
+				GXTaskDeleteResponse res = Client.Post(req);
 			}
 			catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
 			{
@@ -2064,13 +2064,13 @@ namespace GuruxAMI.Client
         /// <remarks>
         /// DC removes task after it is compleated.
         /// </remarks>
-        /// <param name="permamently">Is item removed permamently.</param>
-        public void RemoveTask(GXAmiTask[] tasks, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>
+        public void RemoveTask(GXAmiTask[] tasks, bool permanently)
         {
             try
             {
                 GXTaskDeleteRequest req = new GXTaskDeleteRequest(tasks);
-                GXTaskDeleteResponse res = Client.Delete(req);
+                GXTaskDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2434,6 +2434,29 @@ namespace GuruxAMI.Client
         /// Get user groups where the device group belongs.
         /// </summary>
         /// <returns></returns>
+        public GXAmiUserGroup GetUserGroup(long userGroupId)
+        {
+            try
+            {
+                GXUserGroupsRequest req = new GXUserGroupsRequest(userGroupId);
+                GXUserGroupResponse res = Client.Post(req);
+                if (res.UserGroups.Length == 0)
+                {
+                    throw new ArgumentOutOfRangeException("Invalid User Group ID " + userGroupId.ToString());
+                }
+                return res.UserGroups[0];
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Get user groups where the device group belongs.
+        /// </summary>
+        /// <returns></returns>
         public GXAmiUserGroup[] GetUserGroups(GXAmiDeviceGroup group, bool removed)
         {
             try
@@ -2694,13 +2717,13 @@ namespace GuruxAMI.Client
         /// Remove user.
         /// </summary>
         /// <param name="user">User to remove.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveUser(GXAmiUser user, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveUser(GXAmiUser user, bool permanently)
         {
             try
             {
-                GXUserDeleteRequest req = new GXUserDeleteRequest(new GXAmiUser[] { user }, permamently);
-                GXUserDeleteResponse res = Client.Delete(req);
+                GXUserDeleteRequest req = new GXUserDeleteRequest(new GXAmiUser[] { user }, permanently);
+                GXUserDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2712,13 +2735,13 @@ namespace GuruxAMI.Client
         /// Remove user group.
         /// </summary>
         /// <param name="group">User group to remove.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveUserGroup(GXAmiUserGroup group, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveUserGroup(GXAmiUserGroup group, bool permanently)
         {
             try
             {
-                GXUserGroupDeleteRequest req = new GXUserGroupDeleteRequest(new GXAmiUserGroup[] { group }, permamently);
-                GXUserGroupDeleteResponse res = Client.Delete(req);
+                GXUserGroupDeleteRequest req = new GXUserGroupDeleteRequest(new GXAmiUserGroup[] { group }, permanently);
+                GXUserGroupDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2730,13 +2753,13 @@ namespace GuruxAMI.Client
         /// Remove device group.
         /// </summary>
         /// <param name="target">GXAmiDevice group to remove.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveDeviceGroup(GXAmiDeviceGroup target, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveDeviceGroup(GXAmiDeviceGroup target, bool permanently)
         {
             try
             {
-                GXDeviceGroupDeleteRequest req = new GXDeviceGroupDeleteRequest(new GXAmiDeviceGroup[] { target as GXAmiDeviceGroup }, permamently);
-                GXDeviceGroupDeleteResponse res = Client.Delete(req);
+                GXDeviceGroupDeleteRequest req = new GXDeviceGroupDeleteRequest(new GXAmiDeviceGroup[] { target as GXAmiDeviceGroup }, permanently);
+                GXDeviceGroupDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2749,13 +2772,13 @@ namespace GuruxAMI.Client
         /// Remove device.
         /// </summary>
         /// <param name="target">GXAmiDevice to remove.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveDevice(GXAmiDevice target, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveDevice(GXAmiDevice target, bool permanently)
         {
             try
             {
-                GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { target }, permamently);
-                GXDeviceDeleteResponse res = Client.Delete(req);
+                GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { target }, permanently);
+                GXDeviceDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2768,13 +2791,13 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="device">GXAmiDevice to remove.</param>
         /// <param name="deviceGroup">GXAmiDevice group where device is removed.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveDevice(GXAmiDevice device, GXAmiDeviceGroup deviceGroup, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveDevice(GXAmiDevice device, GXAmiDeviceGroup deviceGroup, bool permanently)
         {
             try
             {
-                GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup }, permamently);
-                GXDeviceDeleteResponse res = Client.Delete(req);
+                GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup }, permanently);
+                GXDeviceDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2788,33 +2811,33 @@ namespace GuruxAMI.Client
         /// Remove selected item.
         /// </summary>
         /// <param name="target">Removed item.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        void Remove(object target, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        void Remove(object target, bool permanently)
         {
             try
             {
                 if (target is GXAmiUserActionLog)
                 {
                     GXActionDeleteRequest req = new GXActionDeleteRequest(new GXAmiUserActionLog[] { target as GXAmiUserActionLog });
-                    GXActionDeleteResponse res = Client.Delete(req);
+                    GXActionDeleteResponse res = Client.Post(req);
                     return;
                 }
                 if (target is GXAmiTask)
                 {
                     GXTaskDeleteRequest req = new GXTaskDeleteRequest(new GXAmiTask[] { target as GXAmiTask });
-                    GXTaskDeleteResponse res = Client.Delete(req);
+                    GXTaskDeleteResponse res = Client.Post(req);
                     return;
                 }
                 if (target is GXAmiSystemError)
                 {
                     GXErrorDeleteRequest req = new GXErrorDeleteRequest(new GXAmiSystemError[] { target as GXAmiSystemError });
-                    GXErrorDeleteResponse res = Client.Delete(req);
+                    GXErrorDeleteResponse res = Client.Post(req);
                     return;
                 }
                 if (target is GXAmiDeviceError)
                 {
                     GXErrorDeleteRequest req = new GXErrorDeleteRequest(new GXAmiDeviceError[] { target as GXAmiDeviceError });
-                    GXErrorDeleteResponse res = Client.Delete(req);
+                    GXErrorDeleteResponse res = Client.Post(req);
                     return;
                 }
                 throw new Exception("Invalid target");
@@ -2830,14 +2853,13 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="user">Added user.</param>
         /// <param name="group">Target user group.</param>
-        public void AddUser(GXAmiUser user, GXAmiUserGroup group)
+        public void AddUser(GXAmiUser user)
         {
             try
             {
-                GXUserUpdateRequest req = new GXUserUpdateRequest(Actions.Add, new GXAmiUser[] { user }, new GXAmiUserGroup[] { group });
+                GXUserUpdateRequest req = new GXUserUpdateRequest(Actions.Add, new GXAmiUser[] { user });
                 GXUserUpdateResponse res = Client.Put(req);
                 user.Id = res.Users[0].Id;
-                group.Id = res.UserGroups[0].Id;
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -2852,7 +2874,7 @@ namespace GuruxAMI.Client
         /// <param name="group">Target device group.</param>
         public void AddDevice(GXAmiDevice device, GXAmiDeviceGroup[] groups)
         {
-            if (device == null || groups == null)
+            if (device == null || groups == null || device.TemplateId == 0)
             {
                 throw new ArgumentNullException();
             }
@@ -2902,12 +2924,12 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Remove selected datacollectors.
         /// </summary>        
-        public void RemoveDataCollectors(GXAmiDataCollector[] datacollectors, bool permamently)
+        public void RemoveDataCollectors(GXAmiDataCollector[] datacollectors, bool permanently)
         {
             try
             {
-                GXDataCollectorDeleteRequest req = new GXDataCollectorDeleteRequest(datacollectors, permamently);
-                Client.Delete(req);                
+                GXDataCollectorDeleteRequest req = new GXDataCollectorDeleteRequest(datacollectors, permanently);
+                Client.Post(req);                
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -3151,15 +3173,11 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="deviceGroup">Added device group.</param>
         /// <param name="userGroup">Target user group.</param>
-        public void AddDeviceGroup(GXAmiDeviceGroup deviceGroup, GXAmiUserGroup userGroup)
+        public void AddDeviceGroup(GXAmiDeviceGroup deviceGroup)
         {
-            if (userGroup.Id == 0)
-            {
-                throw new ArgumentOutOfRangeException("User Group is not added when Device Group is added to the group.");
-            }
             try
             {
-                GXDeviceGroupUpdateRequest req = new GXDeviceGroupUpdateRequest(Actions.Add, new GXAmiDeviceGroup[] { deviceGroup }, new GXAmiUserGroup[] { userGroup });
+                GXDeviceGroupUpdateRequest req = new GXDeviceGroupUpdateRequest(Actions.Add, new GXAmiDeviceGroup[] { deviceGroup });
                 GXDeviceGroupUpdateResponse res = Client.Put(req);
                 deviceGroup.Id = res.DeviceGroups[0].Id;
             }
@@ -3215,12 +3233,121 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
+        /// Add device to device group.
+        /// </summary>
+        /// <param name="deviceGroup">Added device.</param>
+        /// <param name="userGroup">Bind device group.</param>
+        public void AddDeviceToDeviceGroup(GXAmiDevice device, GXAmiDeviceGroup deviceGroup)
+        {
+            try
+            {
+                GXAddDeviceToDeviceGroupRequest req = new GXAddDeviceToDeviceGroupRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup });
+                GXAddDeviceToDeviceGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Remove device from device group.
+        /// </summary>
+        /// <param name="deviceGroup">Removed device.</param>
+        /// <param name="userGroup">Device group where device is removed.</param>
+        public void RemoveDeviceFromDeviceGroup(GXAmiDevice device, GXAmiDeviceGroup deviceGroup)
+        {
+            try
+            {
+                GXRemoveDeviceFromDeviceGroupRequest req = new GXRemoveDeviceFromDeviceGroupRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup });
+                GXRemoveDeviceFromDeviceGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+
+        /// <summary>
+        /// Add device group to user group.
+        /// </summary>
+        /// <param name="deviceGroup">Bind device group.</param>
+        /// <param name="userGroup">Bind user group.</param>
+        public void AddDeviceGroupToUserGroup(GXAmiDeviceGroup deviceGroup, GXAmiUserGroup userGroup)
+        {
+            try
+            {
+                GXAddDeviceGroupToUserGroupRequest req = new GXAddDeviceGroupToUserGroupRequest(new GXAmiDeviceGroup[] { deviceGroup }, new GXAmiUserGroup[] { userGroup });
+                GXAddDeviceGroupToUserGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Remove device group from user group.
+        /// </summary>
+        /// <param name="deviceGroup">Bind device group.</param>
+        /// <param name="userGroup">Bind user group.</param>
+        public void RemoveDeviceGroupFromUserGroup(GXAmiDeviceGroup deviceGroup, GXAmiUserGroup userGroup)
+        {
+            try
+            {
+                GXRemoveDeviceGroupFromUserGroupRequest req = new GXRemoveDeviceGroupFromUserGroupRequest(new GXAmiDeviceGroup[] { deviceGroup }, new GXAmiUserGroup[] { userGroup });
+                GXRemoveDeviceGroupFromUserGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Add user to user group.
+        /// </summary>
+        /// <param name="user">Added user.</param>
+        /// <param name="userGroup">Bind user group.</param>
+        public void AddUserToUserGroup(GXAmiUser user, GXAmiUserGroup userGroup)
+        {
+            try
+            {
+                GXAddUserToUserGroupRequest req = new GXAddUserToUserGroupRequest(new GXAmiUser[] { user }, new GXAmiUserGroup[] { userGroup });
+                GXAddUserToUserGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Remove user from user group.
+        /// </summary>
+        /// <param name="deviceGroup">Bind device group.</param>
+        /// <param name="userGroup">Bind user group.</param>
+        public void RemoveUserFromUserGroup(GXAmiUser user, GXAmiUserGroup userGroup)
+        {
+            try
+            {
+                GXRemoveUserFromUserGroupRequest req = new GXRemoveUserFromUserGroupRequest(new GXAmiUser[] { user }, new GXAmiUserGroup[] { userGroup });
+                GXRemoveUserFromUserGroupResponse res = Client.Post(req);
+            }
+            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
         /// Remove target from the group.
         /// </summary>
         /// <param name="target">Removed object.</param>
         /// <param name="group">Group where target is removed.</param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void Remove(object target, object group, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void Remove(object target, object group, bool permanently)
         {
             try
             {
@@ -3228,8 +3355,8 @@ namespace GuruxAMI.Client
                 {
                     if (group is GXAmiUserGroup)
                     {
-                        GXUserDeleteRequest req = new GXUserDeleteRequest(new GXAmiUser[] { target as GXAmiUser }, new GXAmiUserGroup[] { group as GXAmiUserGroup }, permamently);
-                        GXUserDeleteResponse res = Client.Delete(req);
+                        GXUserDeleteRequest req = new GXUserDeleteRequest(new GXAmiUser[] { target as GXAmiUser }, new GXAmiUserGroup[] { group as GXAmiUserGroup }, permanently);
+                        GXUserDeleteResponse res = Client.Post(req);
                         return;
                     }
                 }
@@ -3237,8 +3364,8 @@ namespace GuruxAMI.Client
                 {
                     if (group is GXAmiDeviceGroup)
                     {
-                        GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { target as GXAmiDevice }, new GXAmiDeviceGroup[] { group as GXAmiDeviceGroup }, permamently);
-                        GXDeviceDeleteResponse res = Client.Delete(req);
+                        GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { target as GXAmiDevice }, new GXAmiDeviceGroup[] { group as GXAmiDeviceGroup }, permanently);
+                        GXDeviceDeleteResponse res = Client.Post(req);
                         return;
                     }
                 }
@@ -3246,8 +3373,8 @@ namespace GuruxAMI.Client
                 {
                     if (group is GXAmiDeviceGroup)
                     {
-                        GXDeviceGroupDeleteRequest req = new GXDeviceGroupDeleteRequest(new GXAmiDeviceGroup[] { target as GXAmiDeviceGroup }, new GXAmiDeviceGroup[] { group as GXAmiDeviceGroup }, permamently);
-                        GXDeviceGroupDeleteResponse res = Client.Delete(req);
+                        GXDeviceGroupDeleteRequest req = new GXDeviceGroupDeleteRequest(new GXAmiDeviceGroup[] { target as GXAmiDeviceGroup }, new GXAmiDeviceGroup[] { group as GXAmiDeviceGroup }, permanently);
+                        GXDeviceGroupDeleteResponse res = Client.Post(req);
                         return;
                     }
                 }
@@ -3609,13 +3736,13 @@ namespace GuruxAMI.Client
         /// Remove device template.
         /// </summary>
         /// <param name="templates"></param>
-        /// <param name="permamently">Is item removed permamently.</param>        
-        public void RemoveDeviceTemplates(GXAmiDeviceTemplate[] templates, bool permamently)
+        /// <param name="permanently">Is item removed permanently.</param>        
+        public void RemoveDeviceTemplates(GXAmiDeviceTemplate[] templates, bool permanently)
         {
             try
             {
-                GXDeviceTemplateDeleteRequest req = new GXDeviceTemplateDeleteRequest(templates, permamently);
-                GXDeviceTemplateDeleteResponse res = Client.Delete(req);
+                GXDeviceTemplateDeleteRequest req = new GXDeviceTemplateDeleteRequest(templates, permanently);
+                GXDeviceTemplateDeleteResponse res = Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
@@ -3959,12 +4086,12 @@ namespace GuruxAMI.Client
                 if (target is GXAmiDataCollector)
                 {
                     GXTracesRequest req = new GXTracesRequest(new GXAmiDataCollector[] { target as GXAmiDataCollector });
-                    ret = Client.Get(req);
+                    ret = Client.Post(req);
                 }
                 else if (target is GXAmiDevice)
                 {
                     GXTracesRequest req = new GXTracesRequest(new GXAmiDevice[] { target as GXAmiDevice });
-                    ret = Client.Get(req);
+                    ret = Client.Post(req);
                 }
                 else
                 {
@@ -4005,7 +4132,7 @@ namespace GuruxAMI.Client
             try
             {
                 GXTraceDeleteRequest req = new GXTraceDeleteRequest(traces);
-                Client.Delete(req);
+                Client.Post(req);
             }
             catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
             {
