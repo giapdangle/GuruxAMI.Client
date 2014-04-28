@@ -34,7 +34,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using ServiceStack.ServiceClient.Web;
 using GuruxAMI.Common;
 using GuruxAMI.Common.Messages;
 using Gurux.Device.Editor;
@@ -44,6 +43,12 @@ using Gurux.Device;
 using System.Threading;
 using System.Reflection;
 using Gurux.Common;
+#if !SS4
+using ServiceStack.ServiceClient.Web;
+#else
+using ServiceStack;
+using System.Threading.Tasks;
+#endif
 
 namespace GuruxAMI.Client
 {
@@ -84,17 +89,17 @@ namespace GuruxAMI.Client
     public delegate void UserGroupsRemovedEventHandler(object sender, GXAmiUserGroup[] groups);
     
     /// <summary>
-    /// New device template(s) are added.
+    /// New device profile(s) are added.
     /// </summary>
     /// <param name="sender"></param>
     /// <param name="devices">Added devices.</param>    
-    public delegate void DeviceTemplatesAddedEventHandler(object sender, GXAmiDeviceTemplate[] templates);
+    public delegate void DeviceProfilesAddedEventHandler(object sender, GXAmiDeviceProfile[] templates);
 
     /// <summary>
-    /// GXAmiDevice template(s) are removed.
+    /// GXAmiDevice profile(s) are removed.
     /// </summary>
     /// <param name="sender"></param>
-    public delegate void DeviceTemplatesRemovedEventHandler(object sender, GXAmiDeviceTemplate[] templates);
+    public delegate void DeviceProfilesRemovedEventHandler(object sender, GXAmiDeviceProfile[] templates);
 
     /// <summary>
     /// New device(s) are added to the device group.
@@ -241,18 +246,54 @@ namespace GuruxAMI.Client
     /// <param name="sender"></param>
     public delegate void TraceClearEventHandler(object sender, Guid dataCollector, ulong deviceId);
 
+    /// <summary>
+    /// New schedule(s) added.
+    /// </summary>
+    /// <param name="sender"></param>
+    /// <param name="deviceGrops">Added device groups.</param>
+    /// <param name="group">Group where items are added.</param>
+    public delegate void SchedulesAddedEventHandler(object sender, GXAmiSchedule[] schedules);
+
+    /// <summary>
+    /// Schedule(s) are updated.
+    /// </summary>
+    /// <param name="sender"></param>
+    public delegate void SchedulesUpdatedEventHandler(object sender, GXAmiSchedule[] schedules);
+
+    /// <summary>
+    /// Schedule(s) are removed.
+    /// </summary>
+    /// <param name="sender"></param>
+    public delegate void SchedulesRemovedEventHandler(object sender, ulong[] schedules);
+
+    /// <summary>
+    /// Schedule states is changed.
+    /// </summary>
+    /// <param name="sender"></param>
+    public delegate void SchedulesStateChangedEventHandler(object sender, GXAmiSchedule[] schedules);
+
+
     public class GXAmiClient : IDisposable
     {
         public string Name;
 		/// <summary>
 		/// There can be only one listener per process.
 		/// </summary>
-        static Guid ListenerGuid;
+        static Guid Session;
+
+        /// <summary>
+        /// Instance listener Guid.
+        /// </summary>
+        /// <remarks>
+        /// This is used with tasks. Task is not notified for the sender.
+        /// </remarks>
+        Guid Instance;
+
         static List<GXAmiClient> Listeners;
         JsonServiceClient Client;
         //Events
-        DeviceTemplatesAddedEventHandler m_DeviceTemplatesAdded;
-        DeviceTemplatesRemovedEventHandler m_DeviceTemplatesRemoved;
+        DeviceProfilesAddedEventHandler m_DeviceProfilesAdded;
+        DeviceProfilesRemovedEventHandler m_DeviceProfilesRemoved;
         UsersAddedEventHandler m_UserAdded;
         UsersUpdatedEventHandler m_UsersUpdated;
         UsersRemovedEventHandler m_UsersRemoved;
@@ -282,6 +323,10 @@ namespace GuruxAMI.Client
         TraceAddedEventHandler m_TraceAdded;
         TraceStateChangedEventHandler m_TraceStateChanged;
         TraceClearEventHandler m_TraceClear;
+        SchedulesAddedEventHandler m_ScheduleAdded;
+        SchedulesUpdatedEventHandler m_ScheduleUpdated;
+        SchedulesRemovedEventHandler m_ScheduleRemoved;
+        SchedulesStateChangedEventHandler m_ScheduleStateChanged;
 
         /// <summary>
         /// New user is added.
@@ -381,34 +426,34 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        /// New device templates(s) are added.
+        /// New device profile(s) are added.
         /// </summary>
         /// <param name="sender"></param>
-        public event DeviceTemplatesAddedEventHandler OnDeviceTemplatesAdded
+        public event DeviceProfilesAddedEventHandler OnDeviceProfilesAdded
         {
             add
             {
-                m_DeviceTemplatesAdded += value;
+                m_DeviceProfilesAdded += value;
             }
             remove
             {
-                m_DeviceTemplatesAdded -= value;
+                m_DeviceProfilesAdded -= value;
             }
         }
 
         /// <summary>
-        /// GXAmiDevice templates (s) are removed.
+        /// GXAmiDevice profile(s) are removed.
         /// </summary>
         /// <param name="sender"></param>
-        public event DeviceTemplatesRemovedEventHandler OnDeviceTemplatesRemoved
+        public event DeviceProfilesRemovedEventHandler OnDeviceProfilesRemoved
         {
             add
             {
-                m_DeviceTemplatesRemoved += value;
+                m_DeviceProfilesRemoved += value;
             }
             remove
             {
-                m_DeviceTemplatesRemoved -= value;
+                m_DeviceProfilesRemoved -= value;
             }
         }
 
@@ -550,6 +595,68 @@ namespace GuruxAMI.Client
             remove
             {
                 m_TasksRemoved -= value;
+            }
+        }
+
+
+        /// <summary>
+        /// New schedule(s) are added.
+        /// </summary>
+        public event SchedulesAddedEventHandler OnSchedulesAdded
+        {
+            add
+            {
+                
+                m_ScheduleAdded += value;
+            }
+            remove
+            {
+                m_ScheduleAdded -= value;
+            }
+        }
+
+        /// <summary>
+        /// Schedule(s) are updated.
+        /// </summary>
+        public event SchedulesUpdatedEventHandler OnSchedulesUpdated
+        {
+            add
+            {
+                m_ScheduleUpdated += value;
+            }
+            remove
+            {
+                m_ScheduleUpdated -= value;
+            }
+        }
+
+        /// <summary>
+        /// Schedule(s) are removed.
+        /// </summary>
+        public event SchedulesRemovedEventHandler OnSchedulesRemoved
+        {
+            add
+            {
+                m_ScheduleRemoved += value;
+            }
+            remove
+            {
+                m_ScheduleRemoved -= value;
+            }
+        }
+
+        /// <summary>
+        /// Schedule(s) states are changed.
+        /// </summary>
+        public event SchedulesStateChangedEventHandler OnSchedulesStateChanged
+        {
+            add
+            {
+                m_ScheduleStateChanged += value;
+            }
+            remove
+            {
+                m_ScheduleStateChanged -= value;
             }
         }
 
@@ -770,12 +877,17 @@ namespace GuruxAMI.Client
 
         private void Listen()
         {
-            GXEventsRequest e1 = new GXEventsRequest(ListenerGuid);
-            Client.GetAsync<GXEventsResponse>(e1,
+            GXEventsRequest e1 = new GXEventsRequest(Session);
+#if !SS4
+            Client.PostAsync<GXEventsResponse>(e1,
                 r =>
                 {
-                    NotifyEvents(this, r.Actions, r.DataCollectorGuid, e1);
+                    NotifyEvents(this, r.Actions, r.Instance, e1);
+                    r = null;
                 }, FailOnAsyncError);
+#else           
+            Task<GXEventsResponse> ret = Client.PostAsync<GXEventsResponse>(e1);
+#endif
         }
 
         private void FailOnAsyncError<GXEventsResponse>(GXEventsResponse response, Exception ex)
@@ -827,7 +939,7 @@ namespace GuruxAMI.Client
                 }
                 try
                 {
-                    GXEventsUnregisterRequest req = new GXEventsUnregisterRequest(this.DataCollectorGuid, GXAmiClient.ListenerGuid);
+                    GXEventsUnregisterRequest req = new GXEventsUnregisterRequest(this.DataCollectorGuid, Session);
                     Client.Put(req);
                 }
                 catch (Exception ex)
@@ -878,15 +990,15 @@ namespace GuruxAMI.Client
                 actions |= (int)Actions.Remove;
                 actionTargets |= (int)ActionTargets.UserGroup;
             }
-            if (m_DeviceTemplatesAdded != null)
+            if (m_DeviceProfilesAdded != null)
             {
                 actions |= (int)Actions.Add;
-                actionTargets |= (int)ActionTargets.DeviceTemplate;
+                actionTargets |= (int)ActionTargets.DeviceProfile;
             }
-            if (m_DeviceTemplatesRemoved != null)
+            if (m_DeviceProfilesRemoved != null)
             {
                 actions |= (int)Actions.Remove;
-                actionTargets |= (int)ActionTargets.DeviceTemplate;
+                actionTargets |= (int)ActionTargets.DeviceProfile;
             }
             if (m_DevicesAdded != null)
             {
@@ -999,6 +1111,28 @@ namespace GuruxAMI.Client
                 actionTargets |= (int)ActionTargets.Trace;
             }
 
+            if (m_ScheduleAdded != null)
+            {
+                actions |= (int)Actions.Add;
+                actionTargets |= (int)ActionTargets.Schedule;
+            }
+            if (m_ScheduleUpdated != null)
+            {
+                actions |= (int)Actions.Edit;
+                actionTargets |= (int)ActionTargets.Schedule;
+            }
+            if (m_ScheduleRemoved != null)
+            {
+                actions |= (int)Actions.Remove;
+                actionTargets |= (int)ActionTargets.Schedule;
+            }
+
+            if (m_ScheduleStateChanged != null)
+            {
+                actions |= (int)Actions.State;
+                actionTargets |= (int)ActionTargets.Schedule;
+            }
+
             if (actions != 0 && actionTargets != 0)
             {
                 if (Listeners == null)
@@ -1008,31 +1142,45 @@ namespace GuruxAMI.Client
                     {                        
                         Listeners.Add(this);
                     }
-                    //Register to listen events.
-                    ListenerGuid = DataCollectorGuid;                    
-                    //If listener is not DC.
+                    //If listener is user, not DC.
                     if (DataCollectorGuid == Guid.Empty)
                     {
-                        ListenerGuid = Guid.NewGuid();
+                        Session = Guid.NewGuid();
                     }
-                    GXEventsRegisterRequest e = new GXEventsRegisterRequest((ActionTargets)actionTargets, (Actions)actions, DataCollectorGuid, ListenerGuid);
+                    else
+                    {
+                        Session = DataCollectorGuid;
+                    }
+                    Instance = Session;
+                    //Register to listen events.
+                    GXEventsRegisterRequest e = new GXEventsRegisterRequest((ActionTargets)actionTargets, (Actions)actions, DataCollectorGuid, Session, Instance);
                     Client.Post(e);
-                    //Start listen events.
-                    GXEventsRequest e1 = new GXEventsRequest(ListenerGuid);
-					Client.GetAsync<GXEventsResponse>(e1,
+                    //Start listen events.                    
+                    GXEventsRequest e1 = new GXEventsRequest(Session);
+#if !SS4                    
+					Client.PostAsync<GXEventsResponse>(e1,
 						r =>
 						{
-                            NotifyEvents(this, r.Actions, r.DataCollectorGuid, e1);
+                            NotifyEvents(this, r.Actions, r.Instance, e1);
 						}, FailOnAsyncError);
-				}
+#else
+                    Task<GXEventsResponse> ret = Client.PostAsync<GXEventsResponse>(e1);
+#endif
+                }
 				else
 				{
                     lock (Listeners)
                     {
                         Listeners.Add(this);
                     }
+                    //Create new listener guid if not set.
+                    if (Instance == Guid.Empty)
+                    {
+                        Instance = Guid.NewGuid();
+                    }
+
                     //Register to listen events.                    
-                    GXEventsRegisterRequest e = new GXEventsRegisterRequest((ActionTargets)actionTargets, (Actions)actions, DataCollectorGuid, ListenerGuid);
+                    GXEventsRegisterRequest e = new GXEventsRegisterRequest((ActionTargets)actionTargets, (Actions)actions, DataCollectorGuid, Session, Instance);
                     Client.Post(e);
 				}
             }
@@ -1089,446 +1237,508 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="actions2"></param>
         /// <param name="e"></param>
-        void NotifyEvents(GXAmiClient sender, GXEventsItem[] actions2, Guid target, GXEventsRequest e)
+        void NotifyEvents(GXAmiClient sender, GXEventsItem[] actions2, Guid instance, GXEventsRequest e)
         {
+            //If client is not listen events any more.
+            if (sender.Client == null)
+            {
+                return;
+            }
+            //Start listen events again right a way or async methods do not work.
+            try
+            {                
+                e = new GXEventsRequest(e.Instance);
+#if !SS4
+                sender.Client.PostAsync<GXEventsResponse>(e,
+                    r =>
+                    {
+                        NotifyEvents(sender, r.Actions, r.Instance, e);
+                    }, FailOnAsyncError);
+#else
+                Task<GXEventsResponse> ret = sender.Client.PostAsync<GXEventsResponse>(e);
+#endif
+            }
+            //This fails sometimes. Just send again.
+            catch (System.NullReferenceException)
+            {
+                e = new GXEventsRequest(e.Instance);
+#if !SS4
+                sender.Client.PostAsync<GXEventsResponse>(e,
+                    r =>
+                    {
+                        NotifyEvents(sender, r.Actions, r.Instance, e);
+                    }, FailOnAsyncError);
+#else
+                Task<GXEventsResponse> ret = sender.Client.PostAsync<GXEventsResponse>(e);
+#endif
+            }
+
+            List<GXAmiClient> list = new List<GXAmiClient>();
             lock (Listeners)
             {
-                foreach (GXAmiClient cl in Listeners)
+                list.AddRange(Listeners);
+            }
+            foreach (GXAmiClient cl in list)
+            {
+                if (cl.Instance == instance)
                 {
-                    if (cl.DataCollectorGuid == target)
+                    List<GXAmiDeviceProfile> DeviceProfilesAdd = new List<GXAmiDeviceProfile>();
+                    List<GXAmiDeviceProfile> DeviceProfilesRemove = new List<GXAmiDeviceProfile>();
+                    List<GXAmiUser> usersAdd = new List<GXAmiUser>();
+                    List<GXAmiUserGroup> userGroupsAdd = new List<GXAmiUserGroup>();
+                    List<GXAmiDevice> devicesAdd = new List<GXAmiDevice>();
+                    List<GXAmiDeviceGroup> deviceGroupsAdd = new List<GXAmiDeviceGroup>();
+                    List<GXAmiTask> tasksAdd = new List<GXAmiTask>();
+                    List<GXAmiDataCollector> dcsAdd = new List<GXAmiDataCollector>();
+                    List<GXAmiDeviceError> deviceErrorAdd = new List<GXAmiDeviceError>();
+                    List<GXAmiTrace> traceAdd = new List<GXAmiTrace>();
+
+                    List<GXAmiUser> usersEdit = new List<GXAmiUser>();
+                    List<GXAmiUserGroup> userGroupsEdit = new List<GXAmiUserGroup>();
+                    List<GXAmiDevice> devicesEdit = new List<GXAmiDevice>();
+                    List<GXAmiDeviceGroup> deviceGroupsEdit = new List<GXAmiDeviceGroup>();
+                    List<GXAmiTask> tasksClaimed = new List<GXAmiTask>();
+                    List<GXAmiDataCollector> dcsEdit = new List<GXAmiDataCollector>();
+                    List<GXAmiTrace> traceEdit = new List<GXAmiTrace>();
+
+                    List<GXAmiUser> usersRemove = new List<GXAmiUser>();
+                    List<GXAmiUserGroup> userGroupsRemove = new List<GXAmiUserGroup>();
+                    List<GXAmiDevice> devicesRemove = new List<GXAmiDevice>();
+                    List<GXAmiDeviceGroup> deviceGroupsRemove = new List<GXAmiDeviceGroup>();
+                    List<GXAmiTask> tasksRemove = new List<GXAmiTask>();
+                    List<GXAmiDataCollector> dcsRemove = new List<GXAmiDataCollector>();
+                    List<GXAmiDataValue> values = new List<GXAmiDataValue>();
+                    List<GXAmiDataRow> tableRows = new List<GXAmiDataRow>();
+                    List<GXAmiDeviceError> deviceErrorRemove = new List<GXAmiDeviceError>();
+                    List<GXAmiDevice> deviceStates = new List<GXAmiDevice>();
+                    List<GXAmiDataCollector> dcStates = new List<GXAmiDataCollector>();
+                    List<GXAmiTrace> traceClear = new List<GXAmiTrace>();
+
+                    List<GXAmiSchedule> schedulesAdd = new List<GXAmiSchedule>();
+                    List<GXAmiSchedule> schedulesEdit = new List<GXAmiSchedule>();
+                    List<ulong> schedulesRemove = new List<ulong>();
+                    List<GXAmiSchedule> schedulesStates = new List<GXAmiSchedule>();
+
+                    GXAmiDeviceGroup deviceGroup = null;
+                    GXAmiDeviceGroup deviceGroupGroup = null;
+                    foreach (GXEventsItem it in actions2)
                     {
-                        List<GXAmiDeviceTemplate> deviceTemplatesAdd = new List<GXAmiDeviceTemplate>();
-                        List<GXAmiDeviceTemplate> deviceTemplatesRemove = new List<GXAmiDeviceTemplate>();
-                        List<GXAmiUser> usersAdd = new List<GXAmiUser>();
-                        List<GXAmiUserGroup> userGroupsAdd = new List<GXAmiUserGroup>();
-                        List<GXAmiDevice> devicesAdd = new List<GXAmiDevice>();
-                        List<GXAmiDeviceGroup> deviceGroupsAdd = new List<GXAmiDeviceGroup>();
-                        List<GXAmiTask> tasksAdd = new List<GXAmiTask>();
-                        List<GXAmiDataCollector> dcsAdd = new List<GXAmiDataCollector>();
-                        List<GXAmiDeviceError> deviceErrorAdd = new List<GXAmiDeviceError>();
-                        List<GXAmiTrace> traceAdd = new List<GXAmiTrace>();
-
-                        List<GXAmiUser> usersEdit = new List<GXAmiUser>();
-                        List<GXAmiUserGroup> userGroupsEdit = new List<GXAmiUserGroup>();
-                        List<GXAmiDevice> devicesEdit = new List<GXAmiDevice>();
-                        List<GXAmiDeviceGroup> deviceGroupsEdit = new List<GXAmiDeviceGroup>();
-                        List<GXAmiTask> tasksClaimed = new List<GXAmiTask>();
-                        List<GXAmiDataCollector> dcsEdit = new List<GXAmiDataCollector>();
-                        List<GXAmiTrace> traceEdit = new List<GXAmiTrace>();
-
-                        List<GXAmiUser> usersRemove = new List<GXAmiUser>();
-                        List<GXAmiUserGroup> userGroupsRemove = new List<GXAmiUserGroup>();
-                        List<GXAmiDevice> devicesRemove = new List<GXAmiDevice>();
-                        List<GXAmiDeviceGroup> deviceGroupsRemove = new List<GXAmiDeviceGroup>();
-                        List<GXAmiTask> tasksRemove = new List<GXAmiTask>();
-                        List<GXAmiDataCollector> dcsRemove = new List<GXAmiDataCollector>();
-                        List<GXAmiDataValue> values = new List<GXAmiDataValue>();
-                        List<GXAmiDataRow> tableRows = new List<GXAmiDataRow>();
-                        List<GXAmiDeviceError> deviceErrorRemove = new List<GXAmiDeviceError>();
-                        List<GXAmiDevice> deviceStates = new List<GXAmiDevice>();
-                        List<GXAmiDataCollector> dcStates = new List<GXAmiDataCollector>();
-                        List<GXAmiTrace> traceClear = new List<GXAmiTrace>();
-
-                        GXAmiDeviceGroup deviceGroup = null;
-                        GXAmiDeviceGroup deviceGroupGroup = null;
-                        foreach (GXEventsItem it in actions2)
+                        try
                         {
-                            try
+                            if (it.Data is GXAmiUser)
                             {
-                                if (it.Data is GXAmiUser)
+                                GXAmiUser user = it.Data as GXAmiUser;
+                                if (it.Action == Actions.Add)
                                 {
-                                    GXAmiUser user = it.Data as GXAmiUser;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        usersAdd.Add(user);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        usersEdit.Add(user);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        usersRemove.Add(user);
-                                    }
+                                    usersAdd.Add(user);
                                 }
-                                else if (it.Data is GXAmiUserGroup)
+                                else if (it.Action == Actions.Edit)
                                 {
-                                    GXAmiUserGroup ug = it.Data as GXAmiUserGroup;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        userGroupsAdd.Add(ug);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        userGroupsEdit.Add(ug);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        userGroupsRemove.Add(ug);
-                                    }
+                                    usersEdit.Add(user);
                                 }
-                                else if (it.Data is GXAmiDeviceTemplate)
+                                else if (it.Action == Actions.Remove)
                                 {
-                                    GXAmiDeviceTemplate dt = it.Data as GXAmiDeviceTemplate;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        deviceTemplatesAdd.Add(dt);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        deviceTemplatesRemove.Add(dt);
-                                    }
-                                }
-                                else if (it.Data is GXAmiDevice)
-                                {
-                                    GXAmiDevice GXAmiDevice = it.Data as GXAmiDevice;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        devicesAdd.Add(GXAmiDevice);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        devicesEdit.Add(GXAmiDevice);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        devicesRemove.Add(GXAmiDevice);
-                                    }
-                                    else if (it.Action == Actions.State)
-                                    {
-                                        deviceStates.Add(GXAmiDevice);
-                                    }
-                                    if (it.Parameters != null)
-                                    {
-                                        deviceGroup = it.Parameters[0] as GXAmiDeviceGroup;
-                                    }
-                                }
-                                else if (it.Data is GXAmiDeviceGroup)
-                                {
-                                    GXAmiDeviceGroup dg = it.Data as GXAmiDeviceGroup;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        deviceGroupsAdd.Add(dg);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        deviceGroupsEdit.Add(dg);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        deviceGroupsRemove.Add(dg);
-                                    }
-                                    if (it.Parameters != null)
-                                    {
-                                        deviceGroupGroup = it.Parameters[0] as GXAmiDeviceGroup;
-                                    }
-                                }
-                                else if (it.Data is GXAmiTask)
-                                {
-                                    GXAmiTask task = it.Data as GXAmiTask;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        tasksAdd.Add(task);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        tasksClaimed.Add(task);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        tasksRemove.Add(task);
-                                    }
-                                }
-                                else if (it.Data is GXAmiTrace)
-                                {
-                                    GXAmiTrace trace = it.Data as GXAmiTrace;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        traceAdd.Add(trace);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {                                        
-                                        //TODO: tasksRemove.Add(task);
-                                    }
-                                }
-                                else if (it.Data is GXAmiDataCollector)
-                                {
-                                    GXAmiDataCollector dc = it.Data as GXAmiDataCollector;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        dcsAdd.Add(dc);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        dcsEdit.Add(dc);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        dcsRemove.Add(dc);
-                                    }
-                                    else if (it.Action == Actions.State)
-                                    {
-                                        dcStates.Add(dc);
-                                    }
-                                }
-                                else if (it.Data is GXAmiDataRow)
-                                {
-                                    GXAmiDataRow v = it.Data as GXAmiDataRow;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        tableRows.Add(v);
-                                    }
-                                    else if (it.Action == Actions.Edit)
-                                    {
-                                        //TODO: Table rows cant' edit at the moment. tableRowsEdit.Add(v);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        //TODO: Table rows cant' remove at the moment. tableRowsRemove.Add(v);
-                                    }
-                                }
-                                else if (it.Data is GXAmiDataValue)
-                                {
-                                    GXAmiDataValue v = it.Data as GXAmiDataValue;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        values.Add(v);
-                                    }
-                                }
-                                else if (it.Data is GXAmiDeviceError)
-                                {
-                                    GXAmiDeviceError err = it.Data as GXAmiDeviceError;
-                                    if (it.Action == Actions.Add)
-                                    {
-                                        deviceErrorAdd.Add(err);
-                                    }
-                                    else if (it.Action == Actions.Remove)
-                                    {
-                                        deviceErrorRemove.Add(err);
-                                    }
+                                    usersRemove.Add(user);
                                 }
                             }
-                            catch (System.Net.WebException ex)
+                            else if (it.Data is GXAmiUserGroup)
                             {
-                                if (ex.Status == System.Net.WebExceptionStatus.ConnectionClosed)
+                                GXAmiUserGroup ug = it.Data as GXAmiUserGroup;
+                                if (it.Action == Actions.Add)
                                 {
-                                    //Connection closed. Ignore and try again...
-                                    continue;
+                                    userGroupsAdd.Add(ug);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    userGroupsEdit.Add(ug);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    userGroupsRemove.Add(ug);
                                 }
                             }
-                            catch (Exception ex)
+                            else if (it.Data is GXAmiDeviceProfile)
                             {
-                                System.Diagnostics.Debug.WriteLine(ex.Message);
-                                if (cl.m_DeviceErrorsAdded != null)
+                                GXAmiDeviceProfile dt = it.Data as GXAmiDeviceProfile;
+                                if (it.Action == Actions.Add)
                                 {
-                                    //TODO: Report error.
-                                    //                        GXAmiDeviceError tmp = new GXAmiDeviceError(it.t);
-                                    //                      cl.m_DeviceErrorsAdded(cl, new GXAmiDeviceError[] { tmp });
+                                    DeviceProfilesAdd.Add(dt);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    DeviceProfilesRemove.Add(dt);
+                                }
+                            }
+                            else if (it.Data is GXAmiDevice)
+                            {
+                                GXAmiDevice GXAmiDevice = it.Data as GXAmiDevice;
+                                if (it.Action == Actions.Add)
+                                {
+                                    devicesAdd.Add(GXAmiDevice);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    devicesEdit.Add(GXAmiDevice);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    devicesRemove.Add(GXAmiDevice);
+                                }
+                                else if (it.Action == Actions.State)
+                                {
+                                    deviceStates.Add(GXAmiDevice);
+                                }
+                                if (it.Parameters != null)
+                                {
+                                    deviceGroup = it.Parameters[0] as GXAmiDeviceGroup;
+                                }
+                            }
+                            else if (it.Data is GXAmiDeviceGroup)
+                            {
+                                GXAmiDeviceGroup dg = it.Data as GXAmiDeviceGroup;
+                                if (it.Action == Actions.Add)
+                                {
+                                    deviceGroupsAdd.Add(dg);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    deviceGroupsEdit.Add(dg);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    deviceGroupsRemove.Add(dg);
+                                }
+                                if (it.Parameters != null)
+                                {
+                                    deviceGroupGroup = it.Parameters[0] as GXAmiDeviceGroup;
+                                }
+                            }
+                            else if (it.Data is GXAmiTask)
+                            {
+                                GXAmiTask task = it.Data as GXAmiTask;
+                                if (it.Action == Actions.Add)
+                                {
+                                    tasksAdd.Add(task);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    tasksClaimed.Add(task);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    tasksRemove.Add(task);
+                                }
+                            }
+                            else if (it.Data is GXAmiTrace)
+                            {
+                                GXAmiTrace trace = it.Data as GXAmiTrace;
+                                if (it.Action == Actions.Add)
+                                {
+                                    traceAdd.Add(trace);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    //TODO: tasksRemove.Add(task);
+                                }
+                            }
+                            else if (it.Data is GXAmiDataCollector)
+                            {
+                                GXAmiDataCollector dc = it.Data as GXAmiDataCollector;
+                                if (it.Action == Actions.Add)
+                                {
+                                    dcsAdd.Add(dc);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    dcsEdit.Add(dc);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    dcsRemove.Add(dc);
+                                }
+                                else if (it.Action == Actions.State)
+                                {
+                                    dcStates.Add(dc);
+                                }
+                            }
+                            else if (it.Data is GXAmiSchedule)
+                            {
+                                GXAmiSchedule schedule = it.Data as GXAmiSchedule;
+                                if (it.Action == Actions.Add)
+                                {                                    
+                                    schedulesAdd.Add(schedule);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {                                    
+                                    schedulesEdit.Add(schedule);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {                                    
+                                    schedulesRemove.Add(schedule.Id);
+                                }
+                                else if (it.Action == Actions.State)
+                                {
+                                    schedulesStates.Add(schedule);
+                                }
+                            }
+                            else if (it.Data is GXAmiDataRow)
+                            {
+                                GXAmiDataRow v = it.Data as GXAmiDataRow;
+                                if (it.Action == Actions.Add)
+                                {
+                                    tableRows.Add(v);
+                                }
+                                else if (it.Action == Actions.Edit)
+                                {
+                                    //TODO: Table rows cant' edit at the moment. tableRowsEdit.Add(v);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    //TODO: Table rows cant' remove at the moment. tableRowsRemove.Add(v);
+                                }
+                            }
+                            else if (it.Data is GXAmiDataValue)
+                            {
+                                GXAmiDataValue v = it.Data as GXAmiDataValue;
+                                if (it.Action == Actions.Add)
+                                {
+                                    values.Add(v);
+                                }
+                            }
+                            else if (it.Data is GXAmiDeviceError)
+                            {
+                                GXAmiDeviceError err = it.Data as GXAmiDeviceError;
+                                if (it.Action == Actions.Add)
+                                {
+                                    deviceErrorAdd.Add(err);
+                                }
+                                else if (it.Action == Actions.Remove)
+                                {
+                                    deviceErrorRemove.Add(err);
                                 }
                             }
                         }
-                        try
+                        catch (System.Net.WebException ex)
                         {
-                            if (cl.m_UserAdded != null && usersAdd.Count != 0)
+                            if (ex.Status == System.Net.WebExceptionStatus.ConnectionClosed)
                             {
-                                cl.m_UserAdded(cl, usersAdd.ToArray());
-                                userGroupsEdit.Clear();
-                            }
-                            if (cl.m_UsersUpdated != null && usersEdit.Count != 0)
-                            {
-                                cl.m_UsersUpdated(cl, usersEdit.ToArray());
-                                usersEdit.Clear();
-                            }
-                            if (cl.m_UsersRemoved != null && usersRemove.Count != 0)
-                            {
-                                cl.m_UsersRemoved(cl, usersRemove.ToArray());
-                                usersRemove.Clear();
-                            }
-                            if (cl.m_UserGroupsAdded != null && userGroupsAdd.Count != 0)
-                            {
-                                cl.m_UserGroupsAdded(cl, userGroupsAdd.ToArray());
-                                userGroupsAdd.Clear();
-                            }
-                            if (cl.m_UserGroupsUpdated != null && userGroupsEdit.Count != 0)
-                            {
-                                cl.m_UserGroupsUpdated(cl, userGroupsEdit.ToArray());
-                                userGroupsEdit.Clear();
-                            }
-                            if (cl.m_UserGroupsRemoved != null && userGroupsRemove.Count != 0)
-                            {
-                                cl.m_UserGroupsRemoved(cl, userGroupsRemove.ToArray());
-                                userGroupsRemove.Clear();
-                            }
-                            if (cl.m_DeviceTemplatesAdded != null && deviceTemplatesAdd.Count != 0)
-                            {
-                                cl.m_DeviceTemplatesAdded(cl, deviceTemplatesAdd.ToArray());
-                                deviceTemplatesAdd.Clear();
-                            }
-                            if (cl.m_DeviceTemplatesRemoved != null && deviceTemplatesRemove.Count != 0)
-                            {
-                                cl.m_DeviceTemplatesRemoved(cl, deviceTemplatesRemove.ToArray());
-                                deviceTemplatesRemove.Clear();
-                            }
-                            if (cl.m_DevicesAdded != null && devicesAdd.Count != 0)
-                            {
-                                cl.m_DevicesAdded(cl, deviceGroup, devicesAdd.ToArray());
-                                devicesAdd.Clear();
-                            }
-                            if (cl.m_DevicesUpdated != null && devicesEdit.Count != 0)
-                            {
-                                cl.m_DevicesUpdated(cl, devicesEdit.ToArray());
-                                devicesEdit.Clear();
-                            }
-                            if (cl.m_DevicesRemoved != null && devicesRemove.Count != 0)
-                            {
-                                cl.m_DevicesRemoved(cl, devicesRemove.ToArray());
-                                devicesRemove.Clear();
-                            }
-                            if (cl.m_DeviceGroupsAdded != null && deviceGroupsAdd.Count != 0)
-                            {
-                                cl.m_DeviceGroupsAdded(cl, deviceGroupsAdd.ToArray(), deviceGroupGroup);
-                                deviceGroupsAdd.Clear();
-                            }
-                            if (cl.m_DeviceGroupsUpdated != null && deviceGroupsEdit.Count != 0)
-                            {
-                                cl.m_DeviceGroupsUpdated(cl, deviceGroupsEdit.ToArray());
-                                deviceGroupsEdit.Clear();
-                            }
-                            if (cl.m_DeviceGroupsRemoved != null && deviceGroupsRemove.Count != 0)
-                            {
-                                cl.m_DeviceGroupsRemoved(cl, deviceGroupsRemove.ToArray());
-                                deviceGroupsRemove.Clear();
-                            }
-                            if (cl.m_TasksAdded != null && tasksAdd.Count != 0)
-                            {
-                                cl.m_TasksAdded(cl, tasksAdd.ToArray());
-                                tasksAdd.Clear();
-                            }
-                            if (cl.m_TasksClaimed != null && tasksClaimed.Count != 0)
-                            {
-                                cl.m_TasksClaimed(cl, tasksClaimed.ToArray());
-                                tasksClaimed.Clear();
-                            }
-                            if (cl.m_TasksRemoved != null && tasksRemove.Count != 0)
-                            {
-                                cl.m_TasksRemoved(cl, tasksRemove.ToArray());
-                                tasksRemove.Clear();
-                            }
-                            if (cl.m_DeviceErrorsAdded != null && deviceErrorAdd.Count != 0)
-                            {
-                                cl.m_DeviceErrorsAdded(cl, deviceErrorAdd.ToArray());
-                                deviceErrorAdd.Clear();
-                            }
-                            if (cl.m_DeviceErrorsRemoved != null && deviceErrorRemove.Count != 0)
-                            {
-                                cl.m_DeviceErrorsRemoved(cl, deviceErrorRemove.ToArray());
-                                deviceErrorRemove.Clear();
-                            }
-                            if (cl.m_SystemErrorsAdded != null)
-                            {
-                            }
-                            if (cl.m_SystemErrorsRemoved != null)
-                            {
-                            }
-                            if (cl.m_ValueUpdated != null && values.Count != 0)
-                            {
-                                cl.m_ValueUpdated(cl, values.ToArray());
-                                values.Clear();
-                            }
-                            if (cl.m_TableValuesUpdated != null && tableRows.Count != 0)
-                            {
-                                uint startRow;
-                                ulong tableId;
-                                object[][] tmp = ItemsToRows(tableRows.ToArray(), out tableId, out startRow);
-                                cl.m_TableValuesUpdated(cl, tableId, startRow, tmp);
-                                tableRows.Clear();
-                            }
-
-                            if (cl.m_DeviceStateChanged != null && deviceStates.Count != 0)
-                            {
-                                cl.m_DeviceStateChanged(cl, deviceStates.ToArray());
-                                deviceStates.Clear();
-                            }
-                            if (cl.m_DataCollectorStateChanged != null && dcStates.Count != 0)
-                            {
-                                cl.m_DataCollectorStateChanged(cl, dcStates.ToArray());
-                                dcStates.Clear();
-                            }
-                            if (cl.m_TraceAdded != null && traceAdd.Count != 0)
-                            {
-                                cl.m_TraceAdded(cl, traceAdd.ToArray());
-                                traceAdd.Clear();
-                            }
-                            if (cl.m_TraceStateChanged != null && traceEdit.Count != 0)
-                            {
-  //                              cl.m_TraceStateChanged(cl, traceEdit.ToArray());
-                                traceEdit.Clear();
-                            }
-                            if (cl.m_TraceClear != null && traceClear.Count != 0)
-                            {
-                               //TODO: cl.m_TraceClear(cl, traceClear.ToArray());
-                                traceClear.Clear();
-                            }
-
-
-                            if (values.Count != 0)
-                            {
-                                if (values[0] is GXAmiDataRow)
-                                {
-
-                                }
-                                else if (cl.m_ValueUpdated != null)
-                                {
-                                    cl.m_ValueUpdated(cl, values.ToArray());
-                                }
-                                values.Clear();
-                            }
-                            if (cl.m_DataCollectorsAdded != null && dcsAdd.Count != 0)
-                            {
-                                cl.m_DataCollectorsAdded(cl, dcsAdd.ToArray());
-                                dcsAdd.Clear();
-                            }
-                            if (cl.m_DataCollectorsUpdated != null && dcsEdit.Count != 0)
-                            {
-                                cl.m_DataCollectorsUpdated(cl, dcsEdit.ToArray());
-                                dcsEdit.Clear();
-                            }
-                            if (cl.m_DataCollectorsRemoved != null && dcsRemove.Count != 0)
-                            {
-                                cl.m_DataCollectorsRemoved(cl, dcsRemove.ToArray());
-                                dcsRemove.Clear();
+                                //Connection closed. Ignore and try again...
+                                continue;
                             }
                         }
                         catch (Exception ex)
                         {
                             System.Diagnostics.Debug.WriteLine(ex.Message);
-                            if (cl.m_SystemErrorsAdded != null)
+                            if (cl.m_DeviceErrorsAdded != null)
                             {
-                                //TODO: Report error. cl.m_SystemErrorsAdded(cl, 
+                                //TODO: Report error.
+                                //                        GXAmiDeviceError tmp = new GXAmiDeviceError(it.t);
+                                //                      cl.m_DeviceErrorsAdded(cl, new GXAmiDeviceError[] { tmp });
                             }
                         }
                     }
+                    try
+                    {
+                        if (cl.m_UserAdded != null && usersAdd.Count != 0)
+                        {
+                            cl.m_UserAdded(cl, usersAdd.ToArray());
+                            userGroupsEdit.Clear();
+                        }
+                        if (cl.m_UsersUpdated != null && usersEdit.Count != 0)
+                        {
+                            cl.m_UsersUpdated(cl, usersEdit.ToArray());
+                            usersEdit.Clear();
+                        }
+                        if (cl.m_UsersRemoved != null && usersRemove.Count != 0)
+                        {
+                            cl.m_UsersRemoved(cl, usersRemove.ToArray());
+                            usersRemove.Clear();
+                        }
+                        if (cl.m_UserGroupsAdded != null && userGroupsAdd.Count != 0)
+                        {
+                            cl.m_UserGroupsAdded(cl, userGroupsAdd.ToArray());
+                            userGroupsAdd.Clear();
+                        }
+                        if (cl.m_UserGroupsUpdated != null && userGroupsEdit.Count != 0)
+                        {
+                            cl.m_UserGroupsUpdated(cl, userGroupsEdit.ToArray());
+                            userGroupsEdit.Clear();
+                        }
+                        if (cl.m_UserGroupsRemoved != null && userGroupsRemove.Count != 0)
+                        {
+                            cl.m_UserGroupsRemoved(cl, userGroupsRemove.ToArray());
+                            userGroupsRemove.Clear();
+                        }
+                        if (cl.m_DeviceProfilesAdded != null && DeviceProfilesAdd.Count != 0)
+                        {
+                            cl.m_DeviceProfilesAdded(cl, DeviceProfilesAdd.ToArray());
+                            DeviceProfilesAdd.Clear();
+                        }
+                        if (cl.m_DeviceProfilesRemoved != null && DeviceProfilesRemove.Count != 0)
+                        {
+                            cl.m_DeviceProfilesRemoved(cl, DeviceProfilesRemove.ToArray());
+                            DeviceProfilesRemove.Clear();
+                        }
+                        if (cl.m_DevicesAdded != null && devicesAdd.Count != 0)
+                        {
+                            cl.m_DevicesAdded(cl, deviceGroup, devicesAdd.ToArray());
+                            devicesAdd.Clear();
+                        }
+                        if (cl.m_DevicesUpdated != null && devicesEdit.Count != 0)
+                        {
+                            cl.m_DevicesUpdated(cl, devicesEdit.ToArray());
+                            devicesEdit.Clear();
+                        }
+                        if (cl.m_DevicesRemoved != null && devicesRemove.Count != 0)
+                        {
+                            cl.m_DevicesRemoved(cl, devicesRemove.ToArray());
+                            devicesRemove.Clear();
+                        }
+                        if (cl.m_DeviceGroupsAdded != null && deviceGroupsAdd.Count != 0)
+                        {
+                            cl.m_DeviceGroupsAdded(cl, deviceGroupsAdd.ToArray(), deviceGroupGroup);
+                            deviceGroupsAdd.Clear();
+                        }
+                        if (cl.m_DeviceGroupsUpdated != null && deviceGroupsEdit.Count != 0)
+                        {
+                            cl.m_DeviceGroupsUpdated(cl, deviceGroupsEdit.ToArray());
+                            deviceGroupsEdit.Clear();
+                        }
+                        if (cl.m_DeviceGroupsRemoved != null && deviceGroupsRemove.Count != 0)
+                        {
+                            cl.m_DeviceGroupsRemoved(cl, deviceGroupsRemove.ToArray());
+                            deviceGroupsRemove.Clear();
+                        }
+                        if (cl.m_TasksClaimed != null && tasksClaimed.Count != 0)
+                        {
+                            cl.m_TasksClaimed(cl, tasksClaimed.ToArray());
+                            tasksClaimed.Clear();
+                        }
+                        if (cl.m_TasksAdded != null && tasksAdd.Count != 0)
+                        {
+                            cl.m_TasksAdded(cl, tasksAdd.ToArray());
+                            tasksAdd.Clear();
+                        }
+                        if (cl.m_TasksRemoved != null && tasksRemove.Count != 0)
+                        {
+                            cl.m_TasksRemoved(cl, tasksRemove.ToArray());
+                            tasksRemove.Clear();
+                        }
+                        if (cl.m_DeviceErrorsAdded != null && deviceErrorAdd.Count != 0)
+                        {
+                            cl.m_DeviceErrorsAdded(cl, deviceErrorAdd.ToArray());
+                            deviceErrorAdd.Clear();
+                        }
+                        if (cl.m_DeviceErrorsRemoved != null && deviceErrorRemove.Count != 0)
+                        {
+                            cl.m_DeviceErrorsRemoved(cl, deviceErrorRemove.ToArray());
+                            deviceErrorRemove.Clear();
+                        }
+                        if (cl.m_SystemErrorsAdded != null)
+                        {
+                        }
+                        if (cl.m_SystemErrorsRemoved != null)
+                        {
+                        }
+                        if (cl.m_ValueUpdated != null && values.Count != 0)
+                        {
+                            cl.m_ValueUpdated(cl, values.ToArray());
+                            values.Clear();
+                        }
+                        if (cl.m_TableValuesUpdated != null && tableRows.Count != 0)
+                        {
+                            uint startRow;
+                            ulong tableId;
+                            object[][] tmp = ItemsToRows(tableRows.ToArray(), out tableId, out startRow);
+                            cl.m_TableValuesUpdated(cl, tableId, startRow, tmp);
+                            tableRows.Clear();
+                        }
+
+                        if (cl.m_DeviceStateChanged != null && deviceStates.Count != 0)
+                        {
+                            cl.m_DeviceStateChanged(cl, deviceStates.ToArray());
+                            deviceStates.Clear();
+                        }
+                        if (cl.m_DataCollectorStateChanged != null && dcStates.Count != 0)
+                        {
+                            cl.m_DataCollectorStateChanged(cl, dcStates.ToArray());
+                            dcStates.Clear();
+                        }
+                        if (cl.m_TraceAdded != null && traceAdd.Count != 0)
+                        {
+                            cl.m_TraceAdded(cl, traceAdd.ToArray());
+                            traceAdd.Clear();
+                        }
+                        if (cl.m_TraceStateChanged != null && traceEdit.Count != 0)
+                        {
+                            //                              cl.m_TraceStateChanged(cl, traceEdit.ToArray());
+                            traceEdit.Clear();
+                        }
+                        if (cl.m_TraceClear != null && traceClear.Count != 0)
+                        {
+                            //TODO: cl.m_TraceClear(cl, traceClear.ToArray());
+                            traceClear.Clear();
+                        }
+
+                        if (cl.m_ScheduleAdded != null && schedulesAdd.Count != 0)
+                        {
+                            cl.m_ScheduleAdded(cl, schedulesAdd.ToArray());
+                            schedulesAdd.Clear();
+                        }
+                        if (cl.m_ScheduleUpdated != null && schedulesEdit.Count != 0)
+                        {
+                            cl.m_ScheduleUpdated(cl, schedulesEdit.ToArray());
+                            schedulesEdit.Clear();
+                        }
+                        if (cl.m_ScheduleStateChanged != null && schedulesStates.Count != 0)
+                        {
+                            cl.m_ScheduleStateChanged(cl, schedulesStates.ToArray());
+                            schedulesStates.Clear();
+                        }
+                        if (cl.m_ScheduleRemoved != null && schedulesRemove.Count != 0)
+                        {
+                            cl.m_ScheduleRemoved(cl, schedulesRemove.ToArray());
+                            schedulesRemove.Clear();
+                        }                        
+
+                        if (values.Count != 0)
+                        {
+                            if (values[0] is GXAmiDataRow)
+                            {
+
+                            }
+                            else if (cl.m_ValueUpdated != null)
+                            {
+                                cl.m_ValueUpdated(cl, values.ToArray());
+                            }
+                            values.Clear();
+                        }
+                        if (cl.m_DataCollectorsAdded != null && dcsAdd.Count != 0)
+                        {
+                            cl.m_DataCollectorsAdded(cl, dcsAdd.ToArray());
+                            dcsAdd.Clear();
+                        }
+                        if (cl.m_DataCollectorsUpdated != null && dcsEdit.Count != 0)
+                        {
+                            cl.m_DataCollectorsUpdated(cl, dcsEdit.ToArray());
+                            dcsEdit.Clear();
+                        }
+                        if (cl.m_DataCollectorsRemoved != null && dcsRemove.Count != 0)
+                        {
+                            cl.m_DataCollectorsRemoved(cl, dcsRemove.ToArray());
+                            dcsRemove.Clear();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(ex.Message);
+                        if (cl.m_SystemErrorsAdded != null)
+                        {
+                            //TODO: Report error. cl.m_SystemErrorsAdded(cl, 
+                        }
+                    }
                 }
-            }
-            try
-            {
-                e = new GXEventsRequest(e.ListenerGuid);
-                sender.Client.GetAsync<GXEventsResponse>(e,
-                    r =>
-                    {
-                        NotifyEvents(sender, r.Actions, r.DataCollectorGuid, e);
-                    }, FailOnAsyncError);
-            }
-            //This fails sometimes. Just send again.
-            catch (System.NullReferenceException)
-            {
-                e = new GXEventsRequest(e.ListenerGuid);
-                sender.Client.GetAsync<GXEventsResponse>(e,
-                    r =>
-                    {
-                        NotifyEvents(sender, r.Actions, r.DataCollectorGuid, e);
-                    }, FailOnAsyncError);
-            }
+            }            
         }
 
 		/// <summary>
@@ -1585,12 +1795,12 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="template"></param>
         /// <returns></returns>
-        public GXAmiDevice CreateDevice(GXAmiDeviceTemplate template)
+        public GXAmiDevice CreateDevice(GXAmiDeviceProfile template)
         {
             try
             {
                 AppDomain.CurrentDomain.TypeResolve += new ResolveEventHandler(CurrentDomain_TypeResolve);
-                GXCreateDeviceRequest req = new GXCreateDeviceRequest(new GXAmiDeviceTemplate[]{template});
+                GXCreateDeviceRequest req = new GXCreateDeviceRequest(new GXAmiDeviceProfile[]{template});
                 GXCreateDeviceResponse res = Client.Get(req);
                 foreach (GXAmiParameter p in res.Devices[0].Parameters)
                 {
@@ -1610,9 +1820,10 @@ namespace GuruxAMI.Client
                         }
                     }
                 }
+                res.Devices[0].ProfileGuid = template.Guid;
                 return res.Devices[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1621,17 +1832,18 @@ namespace GuruxAMI.Client
             {
                 AppDomain.CurrentDomain.TypeResolve -= new ResolveEventHandler(CurrentDomain_TypeResolve);
             }
-        }        
-        
+        }
+
         public GXAmiDevice GetDevice(ulong deviceId)
         {
              try
-            {
-                GXDeviceGetRequest req = new GXDeviceGetRequest(deviceId);
-                GXDeviceGetResponse res = Client.Get(req);                
+            {                
+                GXDevicesRequest req = new GXDevicesRequest();
+                req.DeviceID = deviceId;
+                GXDevicesResponse res = Client.Post(req);                
                 return res.Devices[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1645,7 +1857,7 @@ namespace GuruxAMI.Client
         {
             try
             {
-                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(GetMACAddress());
+                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(null);
                 GXDataCollectorUpdateResponse res = Client.Put(req);                
                 if (DataCollectorGuid == Guid.Empty)
                 {
@@ -1654,7 +1866,7 @@ namespace GuruxAMI.Client
                 }
                 return res.Collectors[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1665,7 +1877,7 @@ namespace GuruxAMI.Client
         /// Construction.
         /// </summary>
         /// <param name="baseUr">GuruxAMI server address. Example: http://127.0.0.1:1337/</param>
-        /// /// <param name="datacollectorGuid">Guid of Data collector.</param>
+        /// <param name="datacollectorGuid">Guid of Data collector.</param>
         public GXAmiClient(string baseUr, Guid datacollectorGuid)
         {
             if (string.IsNullOrEmpty(baseUr))
@@ -1679,7 +1891,7 @@ namespace GuruxAMI.Client
                 Client.SetCredentials(datacollectorGuid.ToString(), Guid.NewGuid().ToString());
                 Client.AlwaysSendBasicAuthHeader = true;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -1709,32 +1921,32 @@ namespace GuruxAMI.Client
                 Client.SetCredentials(userName, GXAmiUser.GetCryptedPassword(userName, password));
                 Client.AlwaysSendBasicAuthHeader = true;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
         }
 
         /// <summary>
-        /// DeviceTypes is the collection of device types that are registered to the computer.
+        /// DeviceProfiles is the collection of device profiles that are registered to the computer.
         /// </summary>
         /// <remarks>
-        /// With the DeviceTypes collection you can easily figure out, what device type templates are registered to the computer.
+        /// With the Device profile collection you can easily figure out, what device type templates are registered to the computer.
         /// With GXPublisher you can easily see registered device types. If the name of the protocol is empty,
         /// all the protocols are returned, otherwise only the ones under it.
         /// </remarks>
         /// <param name="protocol">The name of the protocol.</param>
         /// <param name="removed">Are removed device templates also returned.</param>        
         /// <returns>Collection of device types.</returns>         
-        public GXAmiDeviceTemplate[] GetDeviceTypes(bool preset, string protocol, bool removed)
+        public GXAmiDeviceProfile[] GetDeviceProfiles(bool preset, string protocol, bool all, bool removed)
         {
             try
             {
-                GXDeviceTemplatesRequest req = new GXDeviceTemplatesRequest(preset, protocol, removed);
-                GXDeviceTemplatesResponse res = Client.Post(req);
-                return res.Templates;
+                GXDeviceProfilesRequest req = new GXDeviceProfilesRequest(preset, protocol, all, removed);
+                GXDeviceProfilesResponse res = Client.Post(req);
+                return res.Profiles;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1744,15 +1956,15 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Returns available device templates.
         /// </summary>
-        public GXAmiDeviceTemplate[] GetDeviceTemplates(bool removed)
+        public GXAmiDeviceProfile[] GetDeviceProfiles(bool all, bool removed)
         {
             try
             {
-                GXDeviceTemplatesRequest req = new GXDeviceTemplatesRequest((GXAmiDevice[])null, removed);
-                GXDeviceTemplatesResponse res = Client.Post(req);
-                return res.Templates;
+                GXDeviceProfilesRequest req = new GXDeviceProfilesRequest((GXAmiDevice[])null, all, removed);
+                GXDeviceProfilesResponse res = Client.Post(req);
+                return res.Profiles;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1762,15 +1974,15 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Returns available device templates.
         /// </summary>
-        public GXAmiDeviceTemplate[] GetDeviceTemplates(GXAmiDevice device, bool removed)
+        public GXAmiDeviceProfile[] GetDeviceProfiles(GXAmiDevice device, bool all, bool removed)
         {
             try
             {
-                GXDeviceTemplatesRequest req = new GXDeviceTemplatesRequest(new GXAmiDevice[] { device }, removed);
-                GXDeviceTemplatesResponse res = Client.Post(req);
-                return res.Templates;
+                GXDeviceProfilesRequest req = new GXDeviceProfilesRequest(new GXAmiDevice[] { device }, all, removed);
+                GXDeviceProfilesResponse res = Client.Post(req);
+                return res.Profiles;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1780,15 +1992,15 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Returns available device templates.
         /// </summary>
-        public GXAmiDeviceTemplate[] GetDeviceTemplates(GXAmiDataCollector collector, bool removed)
+        public GXAmiDeviceProfile[] GetDeviceProfiles(GXAmiDataCollector collector, bool all, bool removed)
         {
             try
             {
-                GXDeviceTemplatesRequest req = new GXDeviceTemplatesRequest(new GXAmiDataCollector[] { collector }, removed);
-                GXDeviceTemplatesResponse res = Client.Post(req);
-                return res.Templates;
+                GXDeviceProfilesRequest req = new GXDeviceProfilesRequest(new GXAmiDataCollector[] { collector }, all, removed);
+                GXDeviceProfilesResponse res = Client.Post(req);
+                return res.Profiles;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1798,15 +2010,15 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Returns device templates for the device.
         /// </summary>
-        public byte[] GetDeviceTemplateData(ulong deviceId)
+        public byte[] GetDeviceProfilesData(ulong deviceId)
         {
             try
             {
-                GXDeviceTemplateDataRequest req = new GXDeviceTemplateDataRequest(deviceId);
-                GXDeviceTemplateDataResponse res = Client.Post(req);
+                GXDeviceProfilesDataRequest req = new GXDeviceProfilesDataRequest(deviceId);
+                GXDeviceProfilesDataResponse res = Client.Post(req);
                 return res.Data;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1816,15 +2028,15 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Returns device templates for the device.
         /// </summary>
-        public byte[] GetDeviceTemplateData(Guid DevicetemplateGuid)
+        public byte[] GetDeviceProfilesData(Guid DeviceProfilesGuid)
         {
             try
             {
-                GXDeviceTemplateDataRequest req = new GXDeviceTemplateDataRequest(DevicetemplateGuid);
-                GXDeviceTemplateDataResponse res = Client.Post(req);
+                GXDeviceProfilesDataRequest req = new GXDeviceProfilesDataRequest(DeviceProfilesGuid);
+                GXDeviceProfilesDataResponse res = Client.Post(req);
                 return res.Data;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1843,7 +2055,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.SystemErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1862,7 +2074,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.SystemErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1879,8 +2091,30 @@ namespace GuruxAMI.Client
             {
                 GXScheduleUpdateRequest req = new GXScheduleUpdateRequest(schedules);
                 GXScheduleUpdateResponse res = Client.Post(req);
+                for (int pos = 0; pos != schedules.Length; ++pos)                    
+                {
+                    schedules[pos].Id = res.Schedules[pos].Id;
+                }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Remove schedules.
+        /// </summary>
+        /// <param name="schedules">Schedules to remove.</param>
+        /// <param name="permanently">Is schedule removed permanently.</param>        
+        public void RemoveSchedules(GXAmiSchedule[] schedules, bool permanently)
+        {
+            try
+            {
+                GXScheduleDeleteRequest req = new GXScheduleDeleteRequest(schedules, permanently);
+                GXScheduleDeleteResponse res = Client.Post(req);
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -1898,7 +2132,27 @@ namespace GuruxAMI.Client
                 GXScheduleResponse res = Client.Post(req);
                 return res.Schedules;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+        
+        /// <summary>
+        // Get schedule by id.
+        /// </summary>
+        /// <returns></returns>
+        public GXAmiSchedule GetSchedule(ulong id)
+        {
+            try
+            {
+                GXScheduleRequest req = new GXScheduleRequest();
+                req.TargetIDs = new ulong[] { id};
+                GXScheduleResponse res = Client.Post(req);
+                return res.Schedules[0];
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1917,7 +2171,7 @@ namespace GuruxAMI.Client
                 GXScheduleResponse res = Client.Post(req);
                 return res.Schedules;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1936,7 +2190,7 @@ namespace GuruxAMI.Client
                 GXScheduleResponse res = Client.Post(req);
                 return res.Schedules;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1955,7 +2209,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.DeviceErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1974,7 +2228,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.DeviceErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -1993,7 +2247,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.DeviceErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2012,7 +2266,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.DeviceErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2031,7 +2285,7 @@ namespace GuruxAMI.Client
                 GXErrorsResponse res = Client.Post(req);
                 return res.DeviceErrors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2044,15 +2298,14 @@ namespace GuruxAMI.Client
         /// <remarks>
         /// DC removes task after it is compleated.
         /// </remarks>
-        /// <param name="permanently">Is item removed permanently.</param>
-        public void RemoveTask(GXAmiTask task, bool permanently)
+        public void RemoveTask(GXAmiTask task)
         {
 			try
-			{				
+			{
 				GXTaskDeleteRequest req = new GXTaskDeleteRequest(new GXAmiTask[] { task });
 				GXTaskDeleteResponse res = Client.Post(req);
 			}
-			catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+			catch (WebServiceException ex)
 			{
 				ThrowException(ex);
 			}			
@@ -2072,7 +2325,7 @@ namespace GuruxAMI.Client
                 GXTaskDeleteRequest req = new GXTaskDeleteRequest(tasks);
                 GXTaskDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2093,10 +2346,20 @@ namespace GuruxAMI.Client
                     return null;
                 }
                 task.DataCollectorGuid = this.DataCollectorGuid;
-                res.Tasks[0].Task = task;
+                //Task is null if returned task is what DC asked.
+                //If it has value server is returned other task to execute.
+                if (res.Tasks[0].Task == null)
+                {
+                    res.Tasks[0].Task = task;
+                }
+                else
+                {
+                    //Move task state back to pending. This is important if task is not the task asked.
+                    res.Tasks[0].Task.State = TaskState.Pending;                        
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2108,15 +2371,21 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <returns></returns>
         /// <param name="state">State of task.</param>
-        public GXAmiTask[] GetTasks(TaskState state)
+        /// <param name="log">Are current or log tasks retreaved.</param>
+        public GXAmiTask[] GetTasks(TaskState state, bool log)
         {
             try
             {
                 GXTasksRequest req = new GXTasksRequest(state);
+                req.Log = log;
                 GXTasksResponse res = Client.Post(req);
+                if (log)
+                {
+                    return res.Log;
+                }
                 return res.Tasks;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2141,7 +2410,7 @@ namespace GuruxAMI.Client
                 }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2157,12 +2426,15 @@ namespace GuruxAMI.Client
         {
             try
             {
-                Dictionary<ulong, DeviceStates> states = new Dictionary<ulong,DeviceStates>();
-                states.Add(deviceId, status);
-                GXDeviceStateUpdateRequest req = new GXDeviceStateUpdateRequest(states);
-                Client.Put(req);                
+                if (Client != null)
+                {
+                    Dictionary<ulong, DeviceStates> states = new Dictionary<ulong, DeviceStates>();
+                    states.Add(deviceId, status);
+                    GXDeviceStateUpdateRequest req = new GXDeviceStateUpdateRequest(states);
+                    Client.Put(req);
+                }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);                
             }
@@ -2182,7 +2454,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorStateUpdateRequest req = new GXDataCollectorStateUpdateRequest(states);
                 Client.Put(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2201,7 +2473,7 @@ namespace GuruxAMI.Client
                 GXTasksResponse res = Client.Post(req);
                 return res.Tasks;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2221,7 +2493,7 @@ namespace GuruxAMI.Client
                 GXTasksResponse res = Client.Post(req);
                 return res.Tasks;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2241,7 +2513,7 @@ namespace GuruxAMI.Client
                 GXTasksResponse res = Client.Post(req);
                 return res.Tasks;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2261,7 +2533,7 @@ namespace GuruxAMI.Client
                 GXTasksResponse res = Client.Post(req);
                 return res.Tasks;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2280,7 +2552,7 @@ namespace GuruxAMI.Client
                 GXActionResponse res = Client.Post(req);
                 return res.Actions;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2299,7 +2571,7 @@ namespace GuruxAMI.Client
                 GXActionResponse res = Client.Post(req);
                 return res.Actions;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2318,7 +2590,7 @@ namespace GuruxAMI.Client
                 GXActionResponse res = Client.Post(req);
                 return res.Actions;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2337,7 +2609,7 @@ namespace GuruxAMI.Client
                 GXActionResponse res = Client.Post(req);
                 return res.Actions;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2356,7 +2628,7 @@ namespace GuruxAMI.Client
                 GXActionResponse res = Client.Post(req);
                 return res.Actions;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2376,7 +2648,7 @@ namespace GuruxAMI.Client
         /// Convert received exception to normal exception.
         /// </summary>
         /// <param name="ex"></param>
-        void ThrowException(ServiceStack.ServiceClient.Web.WebServiceException ex)
+        static void ThrowException(WebServiceException ex)
         {
             if (ex.Message == "ArgumentException")
             {
@@ -2390,10 +2662,11 @@ namespace GuruxAMI.Client
             {
                 throw new Exception(ex.ErrorMessage);
             }
-            if (ex.ErrorCode == "Unauthorized")
+            if (ex.StatusCode == 401)//.ErrorCode == "Unauthorized")
             {
-                throw new UnauthorizedAccessException();
+                throw new UnauthorizedAccessException(ex.ErrorMessage);
             }
+            
             if (ex.ErrorMessage == null)
             {
                 throw new Exception(ex.StatusDescription);
@@ -2414,7 +2687,22 @@ namespace GuruxAMI.Client
                 GXUsersResponse res = Client.Post(req);
                 return res.Users;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+
+        public GXAmiUser GetUserInfo()
+        {
+            try
+            {
+                GXUsersRequest req = new GXUsersRequest(-1);
+                GXUsersResponse res = Client.Post(req);
+                return res.Users[0];
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2446,7 +2734,7 @@ namespace GuruxAMI.Client
                 }
                 return res.UserGroups[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2466,7 +2754,7 @@ namespace GuruxAMI.Client
                 GXUserGroupResponse res = Client.Post(req);
                 return res.UserGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2486,7 +2774,7 @@ namespace GuruxAMI.Client
                 GXUserGroupResponse res = Client.Post(req);
                 return res.UserGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2506,46 +2794,60 @@ namespace GuruxAMI.Client
                 GXUserGroupResponse res = Client.Post(req);
                 return res.UserGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
             }
-        }
+        }       
 
-        /// <summary>
-        /// Returns device content also (Categories, tables and properties).
-        /// </summary>
-        /// <returns></returns>
-        public GXAmiDevice[] GetDeviceContent(GXAmiDevice device)
-        {
-            try
-            {
-                GXDevicesRequest req = new GXDevicesRequest(device, true);
-                GXDevicesResponse res = Client.Post(req);
-                return res.Devices;
-            }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
-            {
-                ThrowException(ex);
-                return null;
-            }
-        }
+
 
         /// <summary>
         /// Get all devices.
         /// </summary>
+        /// <param name="removed">Are removed devices retreaved.</param>
+        /// <param name="content">What content from the meter is retreved. It's slow to get all the data from the meter.</param>
         /// <returns></returns>
-        public GXAmiDevice[] GetDevices(bool removed)
+        public GXAmiDevice[] GetDevices(bool removed, DeviceContentType content)
         {
             try
             {
                 GXDevicesRequest req = new GXDevicesRequest();
                 req.Removed = removed;
+                req.Content = content;
                 GXDevicesResponse res = Client.Post(req);
                 return res.Devices;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Get devices that are using selected device profile(s).
+        /// </summary>
+        /// <returns></returns>
+        public GXAmiDevice[] GetDevices(GXAmiDeviceProfile[] profiles)
+        {
+            try
+            {
+                GXDevicesRequest req = new GXDevicesRequest();
+                if (profiles != null)
+                {
+                    req.DeviceProfileIDs = new ulong[profiles.Length];
+                    int pos = -1;
+                    foreach (GXAmiDeviceProfile it in profiles)
+                    {
+                        req.DeviceProfileIDs[++pos] = it.Id;
+                    }
+                }
+                GXDevicesResponse res = Client.Post(req);
+                return res.Devices;
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2565,7 +2867,7 @@ namespace GuruxAMI.Client
                 GXDevicesResponse res = Client.Post(req);
                 return res.Devices;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2576,17 +2878,16 @@ namespace GuruxAMI.Client
         /// Get devices from the data collector.
         /// </summary>
         /// <returns></returns>
-        public GXAmiDevice[] GetDevices(GXAmiDataCollector collector, bool content, bool removed)
+        public GXAmiDevice[] GetDevices(GXAmiDataCollector collector, bool removed)
         {
             try
             {
                 GXDevicesRequest req = new GXDevicesRequest(collector);
                 req.Removed = removed;
-                req.Content = content;
                 GXDevicesResponse res = Client.Post(req);
                 return res.Devices;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2606,7 +2907,7 @@ namespace GuruxAMI.Client
                 GXDevicesResponse res = Client.Post(req);
                 return res.Devices;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2626,7 +2927,7 @@ namespace GuruxAMI.Client
                 GXDevicesResponse res = Client.Post(req);
                 return res.Devices;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2646,7 +2947,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupResponse res = Client.Post(req);
                 return res.DeviceGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2666,7 +2967,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupResponse res = Client.Post(req);
                 return res.DeviceGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2686,7 +2987,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupResponse res = Client.Post(req);
                 return res.DeviceGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2706,7 +3007,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupResponse res = Client.Post(req);
                 return res.DeviceGroups;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2725,7 +3026,7 @@ namespace GuruxAMI.Client
                 GXUserDeleteRequest req = new GXUserDeleteRequest(new GXAmiUser[] { user }, permanently);
                 GXUserDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2743,7 +3044,7 @@ namespace GuruxAMI.Client
                 GXUserGroupDeleteRequest req = new GXUserGroupDeleteRequest(new GXAmiUserGroup[] { group }, permanently);
                 GXUserGroupDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2761,7 +3062,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupDeleteRequest req = new GXDeviceGroupDeleteRequest(new GXAmiDeviceGroup[] { target as GXAmiDeviceGroup }, permanently);
                 GXDeviceGroupDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2780,7 +3081,7 @@ namespace GuruxAMI.Client
                 GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { target }, permanently);
                 GXDeviceDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2799,7 +3100,7 @@ namespace GuruxAMI.Client
                 GXDeviceDeleteRequest req = new GXDeviceDeleteRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup }, permanently);
                 GXDeviceDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2842,7 +3143,7 @@ namespace GuruxAMI.Client
                 }
                 throw new Exception("Invalid target");
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2861,10 +3162,49 @@ namespace GuruxAMI.Client
                 GXUserUpdateResponse res = Client.Put(req);
                 user.Id = res.Users[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
+        }
+
+        /// <summary>
+        /// Add new user to the user group.
+        /// </summary>
+        /// <param name="user">Added user.</param>
+        /// <param name="group">Target user group.</param>
+        public void AddUser(GXAmiUser user, GXAmiUserGroup group)
+        {
+            try
+            {
+                if (user.Id == 0)
+                {
+                    AddUser(user);
+                }
+                if (group.Id == 0)
+                {
+                    AddUserGroup(group);
+                }
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        public object[] Search(string[] text, ActionTargets target, SearchType type)
+        {
+            try
+            {
+                GXSearchRequest req = new GXSearchRequest(text, target, type, SearchOperator.Or);
+                GXSearchResponse res = Client.Post(req);
+                return res.Results;
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+            return null;
         }
 
         /// <summary>
@@ -2874,7 +3214,7 @@ namespace GuruxAMI.Client
         /// <param name="group">Target device group.</param>
         public void AddDevice(GXAmiDevice device, GXAmiDeviceGroup[] groups)
         {
-            if (device == null || groups == null || device.TemplateId == 0)
+            if (device == null || groups == null || device.ProfileId == 0)
             {
                 throw new ArgumentNullException();
             }
@@ -2891,7 +3231,51 @@ namespace GuruxAMI.Client
                 GXDeviceUpdateResponse res = Client.Put(req);
                 device.Id = res.Devices[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        public void AddDevices(GXAmiDevice[] devices, GXAmiDeviceGroup[] groups)
+        {
+            if (devices == null || groups == null || devices.Length == 0)
+            {
+                throw new ArgumentNullException();
+            }
+            foreach (GXAmiDevice it in devices)
+            {
+                if (it.ProfileId == 0)
+                {
+                    throw new ArgumentException("Profile ID.");
+                }
+            }
+            foreach (GXAmiDeviceGroup it in groups)
+            {
+                if (it.Id == 0)
+                {
+                    throw new ArgumentOutOfRangeException("Device Group is not added when device is added to the group.");
+                }
+            }
+            try
+            {
+                //Add 500 devices at the time so there wont be timeout.
+                List<GXAmiDevice> list = new List<GXAmiDevice>(devices);
+                int total = 0;
+                do
+                {
+                    GXAmiDevice[] added = list.Take(500).ToArray();
+                    GXDeviceUpdateRequest req = new GXDeviceUpdateRequest(Actions.Add, added, groups);
+                    list.RemoveRange(0, added.Length);
+                    GXDeviceUpdateResponse res = Client.Put(req);
+                    for (int pos = 0; pos != added.Length; ++pos)
+                    {
+                        devices[total].Id = res.Devices[pos].Id;
+                        ++total;
+                    }
+                } while (list.Count != 0);              
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2931,7 +3315,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorDeleteRequest req = new GXDataCollectorDeleteRequest(datacollectors, permanently);
                 Client.Post(req);                
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);                
             }
@@ -2949,7 +3333,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorUpdateResponse res = Client.Put(req);
                 return res.Collectors[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -2969,8 +3353,9 @@ namespace GuruxAMI.Client
                 GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(new GXAmiDataCollector[] { datacollector }, userGroups);
                 GXDataCollectorUpdateResponse res = Client.Put(req);
                 datacollector.Id = res.Collectors[0].Id;
+                datacollector.Guid = res.Collectors[0].Guid;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -2981,15 +3366,15 @@ namespace GuruxAMI.Client
         /// </summary>
         /// <param name="device">Added data collector.</param>
         /// <param name="group">Target devices.</param>
-        public void AddDataCollector(GXAmiDataCollector datacollector, GXAmiDevice[] devices)
+        public void AddDataCollector(GXAmiDataCollector datacollector)
         {
             try
             {
-                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(new GXAmiDataCollector[] { datacollector }, devices);
+                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(new GXAmiDataCollector[] { datacollector }, null);
                 GXDataCollectorUpdateResponse res = Client.Put(req);
                 datacollector.Id = res.Collectors[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3007,7 +3392,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3017,7 +3402,7 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Get data collectors that are available for the user.
         /// </summary>
-        /// <param name="usergroup"></param>
+        /// <param name="user"></param>
         public GXAmiDataCollector[] GetDataCollectors(GXAmiUser user)
         {
             try
@@ -3026,52 +3411,12 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
             }
         }
-
-        /// <summary>
-        /// Get data collectors that are available for the user.
-        /// </summary>
-        /// <param name="usergroup"></param>
-        public GXAmiDataCollector[] GetDataCollector(GXAmiUser user)
-        {
-            try
-            {
-                GXDataCollectorsRequest req = new GXDataCollectorsRequest(user);
-                GXDataCollectorsResponse res = Client.Post(req);
-                return res.Collectors;
-            }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
-            {
-                ThrowException(ex);
-                return null;
-            }
-        }       
-
-        /*
-        /// <summary>
-        /// Get data collectors that are available for the user group.
-        /// </summary>
-        /// <param name="usergroup"></param>
-        public GXAmiDataCollector[] GetDataCollectors(UserGroup usergroup)
-        {
-            try
-            {
-                GXDataCollectorsRequest req = new GXDataCollectorsRequest(usergroup);
-                GXDataCollectorsResponse res = Client.Post(req);
-                return res.Collectors;
-            }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
-            {
-                ThrowException(ex);
-                return null;
-            }
-        }
-        */
 
         /// <summary>
         /// Get data collectors that user can access.
@@ -3085,7 +3430,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3104,7 +3449,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3123,7 +3468,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3131,18 +3476,22 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        /// Get data collectors by Guid.
+        /// Get data collector by Guid.
         /// </summary>
         /// <param name="guid">Guid.</param>
-        public GXAmiDataCollector[] GetDataCollectorsByGuid(Guid guid)
+        public GXAmiDataCollector GetDataCollectorByGuid(Guid guid)
         {
             try
             {
                 GXDataCollectorsRequest req = new GXDataCollectorsRequest(guid);
                 GXDataCollectorsResponse res = Client.Post(req);
-                return res.Collectors;
+                if (res.Collectors.Length != 1)
+                {
+                    return null;
+                }
+                return res.Collectors[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3160,7 +3509,7 @@ namespace GuruxAMI.Client
                 GXDataCollectorsResponse res = Client.Post(req);
                 return res.Collectors;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3181,7 +3530,27 @@ namespace GuruxAMI.Client
                 GXDeviceGroupUpdateResponse res = Client.Put(req);
                 deviceGroup.Id = res.DeviceGroups[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        public void AddDeviceGroup(GXAmiDeviceGroup deviceGroup, GXAmiUserGroup userGroup)
+        {
+            try
+            {
+                if (deviceGroup.Id == 0)
+                {
+                    AddDeviceGroup(deviceGroup);
+                }
+                if (userGroup.Id == 0)
+                {
+                    AddUserGroup(userGroup);
+                }
+                AddDeviceGroupToUserGroup(deviceGroup, userGroup);                                
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3208,7 +3577,7 @@ namespace GuruxAMI.Client
                 GXDeviceGroupUpdateResponse res = Client.Put(req);
                 target.Id = res.DeviceGroups[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3226,7 +3595,7 @@ namespace GuruxAMI.Client
                 GXUserGroupUpdateResponse res = Client.Put(req);
                 target.Id = res.UserGroups[0].Id;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3244,7 +3613,7 @@ namespace GuruxAMI.Client
                 GXAddDeviceToDeviceGroupRequest req = new GXAddDeviceToDeviceGroupRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup });
                 GXAddDeviceToDeviceGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3262,7 +3631,7 @@ namespace GuruxAMI.Client
                 GXRemoveDeviceFromDeviceGroupRequest req = new GXRemoveDeviceFromDeviceGroupRequest(new GXAmiDevice[] { device }, new GXAmiDeviceGroup[] { deviceGroup });
                 GXRemoveDeviceFromDeviceGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3281,7 +3650,7 @@ namespace GuruxAMI.Client
                 GXAddDeviceGroupToUserGroupRequest req = new GXAddDeviceGroupToUserGroupRequest(new GXAmiDeviceGroup[] { deviceGroup }, new GXAmiUserGroup[] { userGroup });
                 GXAddDeviceGroupToUserGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3299,7 +3668,7 @@ namespace GuruxAMI.Client
                 GXRemoveDeviceGroupFromUserGroupRequest req = new GXRemoveDeviceGroupFromUserGroupRequest(new GXAmiDeviceGroup[] { deviceGroup }, new GXAmiUserGroup[] { userGroup });
                 GXRemoveDeviceGroupFromUserGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3317,7 +3686,7 @@ namespace GuruxAMI.Client
                 GXAddUserToUserGroupRequest req = new GXAddUserToUserGroupRequest(new GXAmiUser[] { user }, new GXAmiUserGroup[] { userGroup });
                 GXAddUserToUserGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3335,7 +3704,7 @@ namespace GuruxAMI.Client
                 GXRemoveUserFromUserGroupRequest req = new GXRemoveUserFromUserGroupRequest(new GXAmiUser[] { user }, new GXAmiUserGroup[] { userGroup });
                 GXRemoveUserFromUserGroupResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3379,7 +3748,7 @@ namespace GuruxAMI.Client
                     }
                 }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3393,18 +3762,26 @@ namespace GuruxAMI.Client
         /// <param name="index">Zero based start index.</param>
         /// <param name="count">Row count. Zwero if all rows are read.</param>
         /// <returns></returns>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask ReadTable(GXAmiDataTable target, int index, int count)
         {
             try
             {
                 string[] p = new string[] { ((int)PartialReadType.Entry).ToString(), index.ToString(), count.ToString() };
-                GXAmiTask task = new GXAmiTask(TaskType.Read, target);
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.Read, target);
                 task.Data = string.Join(";", p);
                 GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3418,18 +3795,26 @@ namespace GuruxAMI.Client
         /// <param name="index">Zero based start index.</param>
         /// <param name="count">Row count. Zwero if all rows are read.</param>
         /// <returns></returns>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask ReadTable(GXAmiDataTable target, DateTime start, DateTime end)
         {
             try
             {
                 string[] p = new string[] { ((int)PartialReadType.Range).ToString(), start.ToString(), end.ToString() };
-                GXAmiTask task = new GXAmiTask(TaskType.Read, target);
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.Read, target);
                 task.Data = string.Join(";", p);
                 GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3439,15 +3824,50 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Read selected item.
         /// </summary>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask Read(object target)
         {
             try
-            {
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.Read, target) });
+            {                
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.Read, target) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Read selected devices.
+        /// </summary>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
+        public GXAmiTask[] Read(GXAmiDevice[] devices)
+        {
+            try
+            {
+                List<GXAmiTask> tasks = new List<GXAmiTask>();
+                foreach (GXAmiDevice it in devices)
+                {
+                    tasks.Add(new GXAmiTask(Instance, TaskType.Read, it));
+                }            
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(tasks.ToArray());
+                GXTaskUpdateResponse res = Client.Put(req);                
+                return res.Tasks;
+            }
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3458,15 +3878,23 @@ namespace GuruxAMI.Client
         /// Write selected item.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask Write(object target)
         {
             try
             {
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.Write, target) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.Write, target) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3477,6 +3905,10 @@ namespace GuruxAMI.Client
         /// Open Media of the Data Collector.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask MediaOpen(Guid dataCollector, string media, string settings)
         {
             try
@@ -3486,11 +3918,15 @@ namespace GuruxAMI.Client
                     settings = "";
                 }
                 string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.MediaOpen, dataCollector, data) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] {new GXAmiTask(Instance, TaskType.MediaOpen, dataCollector, data) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3501,6 +3937,10 @@ namespace GuruxAMI.Client
         /// Close Media of the Data Collector.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask MediaClose(Guid dataCollector, string media, string settings)
         {
             try
@@ -3510,11 +3950,15 @@ namespace GuruxAMI.Client
                     settings = "";
                 }
                 string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.MediaClose, dataCollector, data) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaClose, dataCollector, data) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3525,16 +3969,24 @@ namespace GuruxAMI.Client
         /// DC notifies that media state is changed.
         /// </summary>
         /// <param name="target"></param>
-        internal GXAmiTask MediaStateChange(Guid dataCollector, string media, string settings, MediaState state)
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
+        public GXAmiTask MediaStateChange(Guid dataCollector, string media, string settings, MediaState state)
         {
             try
             {
                 string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + Environment.NewLine + ((int)state).ToString();
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.MediaState, dataCollector, data) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaState, dataCollector, data) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3550,19 +4002,158 @@ namespace GuruxAMI.Client
             try
             {
                 GXErrorUpdateRequest req = new GXErrorUpdateRequest(task.DataCollectorID, task.Id, 1, ex);
-                GXErrorUpdateResponse res = Client.Put(req);
+                GXErrorUpdateResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex2)
+            catch (WebServiceException ex2)
             {
                 ThrowException(ex2);
             }
         }
 
+        /// <summary>
+        /// Get media settings from  the collector.
+        /// </summary>
+        /// <param name="target"></param>
+        /// <seealso cref="GetMediaProperties"/>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
+        public object GetMediaProperties(Guid collectorGuid, string media, string settings, string[] propertyNames)
+        {
+            if (propertyNames == null || propertyNames.Length == 0)
+            {
+                throw new ArgumentException("Property names are invalid.");
+            }
+            if (collectorGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Invalid Data Collector Guid.");
+            }
+            try
+            {
+                string tmp = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + Environment.NewLine + string.Join(";", propertyNames);
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaGetProperty, collectorGuid, tmp) });
+                GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
+                return res.Tasks[0].Data;
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Update media values to the GuruxAMI.
+        /// </summary>
+        /// <param name="values"></param>
+        /// <seealso cref="GetMediaProperties"/>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
+        public void UpdateMediaProperties(Guid collectorGuid, string media, string settings, Dictionary<string, object> properties)
+        {
+            if (properties == null || properties.Count == 0)
+            {
+                throw new ArgumentException("Property values are invalid.");
+            }
+            if (collectorGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Invalid Data Collector Guid.");
+            }
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append(media);
+                sb.Append(Environment.NewLine);
+                sb.Append(settings.Replace(Environment.NewLine, ""));
+                sb.Append(Environment.NewLine);
+                sb.Append(string.Join(";", properties.Keys.ToArray()));
+                sb.Append(Environment.NewLine);
+                bool first = true;
+                foreach (object it in properties.Values)
+                {
+                    if (!first)
+                    {
+                        sb.Append(";");
+                    }
+                    first = false;
+                    sb.Append(it.ToString());
+                }
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaGetProperty, collectorGuid, sb.ToString()) });
+                GXTaskUpdateResponse res = Client.Put(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Set media settings from  the collector.
+        /// </summary>
+        /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
+        public object SetMediaProperties(Guid collectorGuid, string media, string settings, Dictionary<string, object> properties)
+        {
+            if (properties == null || properties.Count == 0)
+            {
+                throw new ArgumentException("Property values are invalid.");
+            }
+            if (collectorGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Invalid Data Collector Guid.");
+            }
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append(media);
+                sb.Append(Environment.NewLine);
+                sb.Append(settings.Replace(Environment.NewLine, ""));
+                sb.Append(Environment.NewLine);
+                sb.Append(string.Join(";", properties.Keys.ToArray()));
+                sb.Append(Environment.NewLine);
+                bool first = true;
+                foreach(object it in properties.Values)
+                {
+                    if (!first)
+                    {
+                        sb.Append(";");
+                    }
+                    first = false;
+                    sb.Append(it.ToString());                    
+                }
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaSetProperty, collectorGuid, sb.ToString())});
+                GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
+                return res.Tasks[0].Data;
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+                return null;
+            }
+        }
 
         /// <summary>
         /// Write data to the collector.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask Write(Guid collectorGuid, string media, string settings, byte[] data, int count, object eop)
         {
             if (data == null || data.Length == 0)
@@ -3581,11 +4172,15 @@ namespace GuruxAMI.Client
             {
                 string tmp = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + 
                                     Environment.NewLine + BitConverter.ToString(data).Replace("-", "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.MediaWrite, collectorGuid, tmp) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaWrite, collectorGuid, tmp) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3596,15 +4191,23 @@ namespace GuruxAMI.Client
         /// Start monitoring.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask StartMonitoring(object target)
         {
             try
             {
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.StartMonitor, target) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.StartMonitor, target) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             } 
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3615,15 +4218,23 @@ namespace GuruxAMI.Client
         /// Stop monitoring.
         /// </summary>
         /// <param name="target"></param>
+        /// <remarks>
+        /// For optimization if task is alredy added for the device it is not add again.
+        /// In this case task is not added to the queue.
+        /// </remarks>
         public GXAmiTask StopMonitoring(object target)
         {
             try
             {
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(TaskType.StopMonitor, target) });
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.StopMonitor, target) });
                 GXTaskUpdateResponse res = Client.Put(req);
+                if (res.Tasks.Length == 0)
+                {
+                    return null;
+                }
                 return res.Tasks[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3631,83 +4242,78 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        /// Run Schedule.
+        /// Run Schedule(s).
         /// </summary>
-        /// <param name="schedules">Schedule to run.</param>
-        public GXAmiTask[] RunSchedule(GXAmiSchedule[] schedules)
+        /// <param name="schedules">Schedule(s) to run.</param>
+        public void RunSchedules(GXAmiSchedule[] schedules)
         {
             try
             {
-                List<GXAmiTask> tasks = new List<GXAmiTask>();
-                foreach (GXAmiSchedule it in schedules)
-                {
-                    tasks.Add(new GXAmiTask(TaskType.RunSchedule, it));
-                }
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(tasks.ToArray());
-                GXTaskUpdateResponse res = Client.Put(req);
-                return res.Tasks;
+                GXScheduleActionRequest req = new GXScheduleActionRequest(schedules, Gurux.Device.ScheduleState.Run);
+                GXScheduleActionResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
-                return null;
             }
         }
 
         /// <summary>
-        /// Start Schedule.
+        /// Start Schedule(s).
         /// </summary>
-        /// <param name="schedules">Schedule to start.</param>
-        public GXAmiTask[] StartSchedules(GXAmiSchedule[] schedules)
+        /// <param name="schedules">Schedule(s) to start.</param>
+        public void StartSchedules(GXAmiSchedule[] schedules)
         {
             try
             {
-                List<GXAmiTask> tasks = new List<GXAmiTask>();
-                foreach (GXAmiSchedule it in schedules)
-                {
-                    tasks.Add(new GXAmiTask(TaskType.StartSchedule, it));
-                }
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(tasks.ToArray());
-                GXTaskUpdateResponse res = Client.Put(req);
-                return res.Tasks;
+                GXScheduleActionRequest req = new GXScheduleActionRequest(schedules, Gurux.Device.ScheduleState.Start);
+                GXScheduleActionResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
-                return null;
             }
         }
 
         /// <summary>
-        /// Stop Schedule.
+        /// Stop Schedule(s).
         /// </summary>
-        /// <param name="schedules">Schedule to Stop.</param>
-        public GXAmiTask[] StopSchedule(GXAmiSchedule[] schedules)
+        /// <param name="schedules">Schedule(s) to Stop.</param>
+        public void StopSchedules(GXAmiSchedule[] schedules)
         {
             try
             {
-                List<GXAmiTask> tasks = new List<GXAmiTask>();
-                foreach (GXAmiSchedule it in schedules)
-                {
-                    tasks.Add(new GXAmiTask(TaskType.StopSchedule, it));
-                }
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(tasks.ToArray());
-                GXTaskUpdateResponse res = Client.Put(req);
-                return res.Tasks;
+                GXScheduleActionRequest req = new GXScheduleActionRequest(schedules, Gurux.Device.ScheduleState.End);
+                GXScheduleActionResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
-                return null;
             }
         }
 
         /// <summary>
-        /// Add new device template to the users.
+        /// Schedule server notifies that state is changed.
+        /// </summary>
+        internal void NotifyScheduleStateChange(GXAmiSchedule schedule, ScheduleState state)
+        {
+            try
+            {
+                GXScheduleActionRequest req = new GXScheduleActionRequest(new GXAmiSchedule[]{schedule}, state);
+                GXScheduleActionResponse res = Client.Post(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Add new device profile to the users.
         /// </summary>
         /// <param name="groups">User groups that can see the device template.</param>
         /// <param name="device">GXAmiDevice to add.</param>
-        public void AddDeviceTemplate(GXAmiUserGroup[] groups, GXDevice device)
+        public void AddDeviceProfile(GXAmiUserGroup[] groups, GXDevice device)
         {
             if (device == null)
             {
@@ -3723,28 +4329,28 @@ namespace GuruxAMI.Client
                     BinaryReader r = new BinaryReader(stream);
                     data = r.ReadBytes((int)stream.Length);
                 }
-                GXDeviceTemplateUpdateRequest req = new GXDeviceTemplateUpdateRequest(groups, data);
-                GXDeviceTemplateUpdateResponse res = Client.Post(req);
+                GXDeviceProfilesUpdateRequest req = new GXDeviceProfilesUpdateRequest(groups, data);
+                GXDeviceProfilesUpdateResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
         }        
 
         /// <summary>
-        /// Remove device template.
+        /// Remove device profile.
         /// </summary>
-        /// <param name="templates"></param>
+        /// <param name="profile"></param>
         /// <param name="permanently">Is item removed permanently.</param>        
-        public void RemoveDeviceTemplates(GXAmiDeviceTemplate[] templates, bool permanently)
+        public void RemoveDeviceProfile(GXAmiDeviceProfile[] profile, bool permanently)
         {
             try
             {
-                GXDeviceTemplateDeleteRequest req = new GXDeviceTemplateDeleteRequest(templates, permanently);
-                GXDeviceTemplateDeleteResponse res = Client.Post(req);
+                GXDeviceProfilesDeleteRequest req = new GXDeviceProfilesDeleteRequest(profile, permanently);
+                GXDeviceProfilesDeleteResponse res = Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3766,12 +4372,49 @@ namespace GuruxAMI.Client
                 }
                 return false;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return false;
             }
         }
+
+        /// <summary>
+        /// Create new database.
+        /// </summary>
+        /// <param name="userName">Admin user name.</param>
+        /// <param name="password">Admin password.</param>
+        public void CreateTables(string userName, string password)
+        {
+            try
+            {
+                GXCreateTablesRequest req = new GXCreateTablesRequest();
+                req.UserName = userName;
+                req.Password = password;
+                GXCreateTablesResponse ret = Client.Post(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Drop database.
+        /// </summary>
+        public void DropTables()
+        {
+            try
+            {
+                GXDropTablesRequest req = new GXDropTablesRequest();
+                GXDropTablesResponse ret = Client.Post(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
+        }
+
 
         /// <summary>
         /// Update item.
@@ -3833,7 +4476,7 @@ namespace GuruxAMI.Client
                         throw new ArgumentException("Invalid Id");
                     }
                     GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { target as GXAmiTask });
-                    GXTaskUpdateResponse res = Client.Put(req);
+                    GXTaskUpdateResponse res = Client.Put(req);                    
                     return;
                 }
                 if (target is GXAmiSchedule)
@@ -3843,7 +4486,7 @@ namespace GuruxAMI.Client
                         throw new ArgumentException("Invalid Id");
                     }
                     GXScheduleUpdateRequest req = new GXScheduleUpdateRequest(new GXAmiSchedule[] { target as GXAmiSchedule });
-                    GXScheduleUpdateResponse res = Client.Put(req);
+                    GXScheduleUpdateResponse res = Client.Post(req);
                     return;
                 }
                 if (target is GXAmiDataCollector)
@@ -3852,7 +4495,7 @@ namespace GuruxAMI.Client
                     {
                         throw new ArgumentException("Invalid Id");
                     }
-                    GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(new GXAmiDataCollector[] { target as GXAmiDataCollector }, (GXAmiDevice[])null);
+                    GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(new GXAmiDataCollector[] { target as GXAmiDataCollector }, null);
                     GXDataCollectorUpdateResponse res = Client.Put(req);
                     return;
                 }
@@ -3865,7 +4508,7 @@ namespace GuruxAMI.Client
                 
 
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3883,8 +4526,13 @@ namespace GuruxAMI.Client
             //Client might be null when app is closing.
             if (Client != null)
             {
-                GXErrorUpdateRequest req = new GXErrorUpdateRequest(task.TargetDeviceID, task.Id, severity, ex);
-                GXErrorUpdateResponse res = Client.Put(req);
+                ulong id = 0;
+                if (task.TargetDeviceID != null)
+                {
+                    id = task.TargetDeviceID.Value;
+                }
+                GXErrorUpdateRequest req = new GXErrorUpdateRequest(id, task.Id, severity, ex);
+                GXErrorUpdateResponse res = Client.Post(req);
             }
         }
 
@@ -3906,7 +4554,7 @@ namespace GuruxAMI.Client
                 }
                 return null;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3931,7 +4579,7 @@ namespace GuruxAMI.Client
                 }
                 return null;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -3954,14 +4602,14 @@ namespace GuruxAMI.Client
                     Client.Post(req);
                 }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
         }     
 
         /// <summary>
-        /// Update device values.
+        /// Update device values to GuruxAMI.
         /// </summary>
         /// <param name="values"></param>
         public void UpdateValues(GXAmiDataValue[] values)
@@ -3975,7 +4623,7 @@ namespace GuruxAMI.Client
                     Client.Post(req);
                 }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -3999,7 +4647,7 @@ namespace GuruxAMI.Client
                 }
                 return 0;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return 0;
@@ -4030,7 +4678,7 @@ namespace GuruxAMI.Client
                     throw new Exception("Trace level set failed. Unknown target.");
                 }
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);                
             }
@@ -4067,7 +4715,7 @@ namespace GuruxAMI.Client
                 }
                 return ret.Levels[0];
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return System.Diagnostics.TraceLevel.Off;
@@ -4099,7 +4747,7 @@ namespace GuruxAMI.Client
                 }
                 return ret.Traces;
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
                 return null;
@@ -4118,7 +4766,7 @@ namespace GuruxAMI.Client
                 GXTraceAddRequest req = new GXTraceAddRequest(traces);
                 Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -4134,7 +4782,7 @@ namespace GuruxAMI.Client
                 GXTraceDeleteRequest req = new GXTraceDeleteRequest(traces);
                 Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -4150,7 +4798,7 @@ namespace GuruxAMI.Client
                 GXTraceDeleteRequest req = new GXTraceDeleteRequest(devices);
                 Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -4167,7 +4815,7 @@ namespace GuruxAMI.Client
                 GXTraceDeleteRequest req = new GXTraceDeleteRequest(collectors);
                 Client.Post(req);
             }
-            catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+            catch (WebServiceException ex)
             {
                 ThrowException(ex);
             }
@@ -4195,7 +4843,7 @@ namespace GuruxAMI.Client
                     GXTableResponse res = Client.Post(req);
                     return res.Rows.ToArray();
                 }
-                catch (ServiceStack.ServiceClient.Web.WebServiceException ex)
+                catch (WebServiceException ex)
                 {
                     ThrowException(ex);
                     return null;

@@ -44,6 +44,9 @@ using Gurux.Device.Editor;
 using Gurux.Common;
 using GuruxAMI.Common.Messages;
 using System.ComponentModel;
+using Gurux.Device.PresetDevices;
+using System.Xml;
+using System.Runtime.Serialization;
 
 namespace GuruxAMI.Client
 {
@@ -72,13 +75,14 @@ namespace GuruxAMI.Client
         TasksClaimedEventHandler m_TasksClaimed;
         TasksRemovedEventHandler m_TasksRemoved;
         AvailableSerialPortsEventHandler m_AvailableSerialPorts;
-        internal Gurux.Common.ErrorEventHandler m_Error;
-        GXClaimedTask taskinfo = null;
+        internal Gurux.Common.ErrorEventHandler m_Error;        
         
-
+        /// <summary>
+        /// New task is added or claimed.
+        /// </summary>
         AutoResetEvent TaskModified = new AutoResetEvent(false);
+
         ManualResetEvent Closing = new ManualResetEvent(false);
-        ManualResetEvent Closed = new ManualResetEvent(false);
         Thread Thread;
 
         GXAmiClient DC;
@@ -176,7 +180,11 @@ namespace GuruxAMI.Client
         public Guid Guid
         {
             get
-            {
+            {                
+                if (DC == null)
+                {
+                    return Guid.Empty;
+                }
                 return DC.DataCollectorGuid;
             }
         }
@@ -187,7 +195,7 @@ namespace GuruxAMI.Client
         /// <param name="name"></param>
         /// <returns></returns>
         public GXAmiDataCollector Init(string name)
-        {
+        {            
             GXAmiDataCollector dc = null;
             if (DC.DataCollectorGuid == Guid.Empty)
             {
@@ -204,8 +212,25 @@ namespace GuruxAMI.Client
                 DC.Update(dc);
             }
             else
-            {
+            {                
+                dc = DC.GetDataCollectorByGuid(DC.DataCollectorGuid);
+                string[] old = dc.Medias;
+                dc.Medias = Gurux.Communication.GXClient.GetAvailableMedias();
+                bool changed = old != dc.Medias;
+                if (m_AvailableSerialPorts != null)
+                {
+                    GXSerialPortInfo e = new GXSerialPortInfo();
+                    m_AvailableSerialPorts(this, e);
+                    old = dc.SerialPorts;
+                    dc.SerialPorts = e.SerialPorts;
+                    changed |= old != dc.SerialPorts;                    
+                }
                 TraceLevel = DC.GetTraceLevel(DC);
+                //If medias or serial ports are changed.
+                if (changed)
+                {
+                    DC.Update(dc);
+                }
             }
             DC.OnTasksClaimed += new TasksClaimedEventHandler(DC_OnTasksClaimed);
             DC.OnTasksAdded += new TasksAddedEventHandler(DC_OnTasksAdded);
@@ -214,7 +239,7 @@ namespace GuruxAMI.Client
             DC.OnDevicesRemoved += new DevicesRemovedEventHandler(DC_OnDevicesRemoved);
             DC.OnDataCollectorsUpdated += new DataCollectorsUpdatedEventHandler(DC_OnDataCollectorsUpdated);
             DC.StartListenEvents();
-            //Start Data Collector.
+            //Start Data Collector thread.
             Thread = new Thread(new ThreadStart(Run));
             Thread.IsBackground = true;
             Thread.Start();
@@ -242,8 +267,18 @@ namespace GuruxAMI.Client
             DC.Update(dc);
         }
 
+        /// <summary>
+        /// Close DC and stop listen events.
+        /// </summary>
         public void Close()
         {
+            Closing.Set();
+            DC.OnTasksClaimed -= new TasksClaimedEventHandler(DC_OnTasksClaimed);
+            DC.OnTasksAdded -= new TasksAddedEventHandler(DC_OnTasksAdded);
+            DC.OnTasksRemoved -= new TasksRemovedEventHandler(DC_OnTasksRemoved);
+            DC.OnDevicesUpdated -= new DevicesUpdatedEventHandler(DC_OnDevicesUpdated);
+            DC.OnDevicesRemoved -= new DevicesRemovedEventHandler(DC_OnDevicesRemoved);
+            DC.OnDataCollectorsUpdated -= new DataCollectorsUpdatedEventHandler(DC_OnDataCollectorsUpdated);
             DC.StopListenEvents();
         }
 
@@ -273,15 +308,27 @@ namespace GuruxAMI.Client
         class GXClaimedInfo
         {
             /// <summary>
-            /// Collector is executing the task.
+            /// Work thread 
             /// </summary>
-            public ManualResetEvent ExecutingTask = new ManualResetEvent(false);
+            public Thread WorkThread;
+
             /// <summary>
-            /// Set when new task is arived.
+            /// Collector is executed the task.
+            /// </summary>
+            public AutoResetEvent TaskExecuted = new AutoResetEvent(false);
+            
+            /// <summary>
+            /// Set when new task is arrived.
             /// </summary>
             public AutoResetEvent NewTask = new AutoResetEvent(true);
+
             /// <summary>
-            /// List of received tasks.
+            /// Set when thread can close work.
+            /// </summary>
+            public ManualResetEvent Closing = new ManualResetEvent(false);
+            
+            /// <summary>
+            /// List of handled tasks.
             /// </summary>
             public List<GXClaimedTask> ClaimedTasks = new List<GXClaimedTask>();
             
@@ -293,84 +340,136 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
+        /// Save executed tasks so they can be retreaved if app is restarted.
+        /// </summary>
+        /// <remarks>
+        /// Example monitoring uses this.
+        /// </remarks>
+        static void SaveExecutedTask(Guid guid, GXClaimedTask task)
+        {
+            XmlWriterSettings settings = new XmlWriterSettings();
+            settings.Indent = true;
+            settings.Encoding = System.Text.Encoding.UTF8;
+            settings.CloseOutput = true;
+            settings.CheckCharacters = false;
+            System.Runtime.Serialization.DataContractSerializer x = new System.Runtime.Serialization.DataContractSerializer(typeof(GXClaimedTask));
+            using (XmlWriter writer = XmlWriter.Create(guid.ToString() + "executingTask.xml", settings))
+            {
+                x.WriteObject(writer, task);
+            }
+        }
+
+        /// <summary>
+        /// Load executed tasks so they can be retreaved if app is restarted.
+        /// </summary>
+        /// <remarks>
+        /// Example monitoring uses this.
+        /// </remarks>
+        static GXClaimedTask LoadExecutedTask(Guid guid)
+        {
+            try
+            {
+                string path = guid.ToString() + "executingTask.xml";
+                if (File.Exists(path))
+                {
+                    System.Runtime.Serialization.DataContractSerializer x = new System.Runtime.Serialization.DataContractSerializer(typeof(GXClaimedTask), new Type[] { typeof(GXAmiTask[]) });
+                    using (FileStream reader = new FileStream(path, FileMode.Open))
+                    {
+                        return x.ReadObject(reader) as GXClaimedTask;
+                    }                 
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex.Message);                
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Device collector thread.
         /// </summary>
         /// <param name="target"></param>
         void DeviceCollector(object target)
-        {
+        {            
             GXClaimedInfo info = target as GXClaimedInfo;            
             string pathToDll = this.GetType().Assembly.CodeBase;
             // Create an Application Domain:
             AppDomainSetup domainSetup = new AppDomainSetup { PrivateBinPath = pathToDll };
             string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + Path.DirectorySeparatorChar);
             Dictionary<string, IGXMedia> medias = new Dictionary<string,IGXMedia>();
-            Guid loadedDeviceTemplate = Guid.Empty;
+            Guid loadedDeviceProfiles = Guid.Empty;
             System.AppDomain td = AppDomain.CreateDomain("DC_Domain", null, domainSetup);
             GXProxyClass pc = (GXProxyClass)(td.CreateInstanceFromAndUnwrap(pathToDll, typeof(GXProxyClass).FullName));
             GXAmiEventListener listener = new GXAmiEventListener(this, pc, DC);            
             string path = null;
+            List<GXAmiTask> executedTasks = new List<GXAmiTask>();
+            //Connection is leave open if meter is monitored.
             bool leaveConnectionOpen = false;
-            while (!Closing.WaitOne(1))
+            GXClaimedTask taskinfo = null;            
+            while (!info.Closing.WaitOne(1))
             {
                 try
                 {
-                    while (!Closing.WaitOne(1))
+                    while (!info.Closing.WaitOne(1))
                     {
+                        bool moreTasks = false;
                         //Check is there more tasks to execute otherwice close the connection.
                         lock (info.ClaimedTasks)
                         {
-                            if (!leaveConnectionOpen)
+                            foreach(var it in info.ClaimedTasks)
                             {
-                                bool allClaimed = true;
-                                foreach(var it in info.ClaimedTasks)
+                                if (it.Task.State == TaskState.Pending)
                                 {
-                                    if (it.Task.State == TaskState.Pending)
-                                    {
-                                        allClaimed = false;
-                                    }
+                                    moreTasks = true;
                                 }
-                                if (allClaimed)
+                            }
+                            //Close connection if meter is not monitored.
+                            if (!moreTasks && !leaveConnectionOpen)
+                            {
+                                try
                                 {
-                                    try
+                                    pc.Disconnect();
+                                }
+                                catch (Exception ex)
+                                {
+                                    lock (info.Exceptions)
                                     {
-                                        pc.Disconnect();
+                                        //Taskinfo is null in disconnecting.
+                                        if (taskinfo != null)
+                                        {
+                                            info.Exceptions.Add(taskinfo, ex);
+                                            taskinfo.Task.State = TaskState.Failed;
+                                            info.TaskExecuted.Set();
+                                        }
                                     }
-                                    catch (Exception ex)
+                                    if (m_Error != null)
                                     {
-                                        lock (info.Exceptions)
-                                        {
-                                            //Taskinfo is null in disconnecting.
-                                            if (taskinfo != null)
-                                            {
-                                                info.Exceptions.Add(taskinfo, ex);
-                                                taskinfo.Task.State = TaskState.Failed;
-                                                TaskModified.Set();
-                                            }
-                                        }
-                                        if (m_Error != null)
-                                        {
-                                            m_Error(this, ex);
-                                        }
+                                        m_Error(this, ex);
                                     }
                                 }
                             }
                         }
-                        //Wait until next task received or app is closed.
-                        if (EventWaitHandle.WaitAny(new EventWaitHandle[] { info.NewTask, Closing }) == 1)
+                        if (!moreTasks)
                         {
-                            break;
-                        }                        
-                        info.ExecutingTask.Set();
-                        taskinfo = null;                        
+                            //Wait until next task received or app is closed.
+                            if (EventWaitHandle.WaitAny(new EventWaitHandle[] { info.NewTask, info.Closing }) == 1)
+                            {
+                                break;
+                            }
+                        }
+                        taskinfo = null;
+                        System.Diagnostics.Debug.WriteLine("Checking task: " + Guid.ToString());
                         lock (info.ClaimedTasks)
                         {
+                            System.Diagnostics.Debug.WriteLine("Checking task2 : " + Guid.ToString());
                             foreach (GXClaimedTask it in info.ClaimedTasks)
-                            {
+                            {                                
                                 if (it.Task.State == TaskState.Pending)
                                 {
                                     it.Task.State = TaskState.Processing;
                                     taskinfo = it;
-                                    System.Diagnostics.Debug.WriteLine("Processing task: " + it.Task.Id);
+                                    System.Diagnostics.Debug.WriteLine("Processing task: " + it.Task.Id + " " + Guid.ToString());
                                     break;
                                 }
                             }                            
@@ -379,31 +478,70 @@ namespace GuruxAMI.Client
                         //If task is claimed.
                         if (taskinfo != null)
                         {
-                            if (taskinfo.Task.TaskType == TaskType.MediaOpen)
+                            info.TaskExecuted.Reset();
+                            if (taskinfo.Task.TaskType == TaskType.MediaGetProperty)
                             {
                                 IGXMedia media = null;
-                                leaveConnectionOpen = true;
-                                if (medias.ContainsKey(taskinfo.Settings))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
                                 {
-                                    media = medias[taskinfo.Settings];
-                                    media_OnMediaStateChange(media, new MediaStateEventArgs(MediaState.Open));
+                                    media = medias[taskinfo.MediaSettings[0].Value];
                                 }
                                 else
                                 {
+                                    media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
+                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                }
+                                PropertyDescriptor prop = TypeDescriptor.GetProperties(media)[taskinfo.Data];
+                                object value = prop.GetValue(media);
+                                taskinfo.Task.State = TaskState.Succeeded;                                
+                                Dictionary<string, object> properties = new Dictionary<string,object>();
+                                properties.Add(taskinfo.Data, value);
+                                DC.SetMediaProperties(this.Guid, taskinfo.MediaSettings[0].Key, taskinfo.MediaSettings[0].Value, properties);                                
+                            }
+                            else if (taskinfo.Task.TaskType == TaskType.MediaSetProperty)
+                            {
+                                IGXMedia media = null;
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                {
+                                    media = medias[taskinfo.MediaSettings[0].Value];
+                                }
+                                else
+                                {
+                                    media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
+                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                }
+                                string[] tmp = taskinfo.Data.Split(new string[] {Environment.NewLine}, StringSplitOptions.None);
+                                PropertyDescriptor prop = TypeDescriptor.GetProperties(media)[tmp[0]];
+                                object value = Convert.ChangeType(tmp[1], prop.PropertyType);
+                                prop.SetValue(media, value);
+                                taskinfo.Task.State = TaskState.Succeeded;                                
+                            }
+                            else if (taskinfo.Task.TaskType == TaskType.MediaOpen)
+                            {
+                                IGXMedia media = null;
+                                leaveConnectionOpen = true;
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                {
+                                    media = medias[taskinfo.MediaSettings[0].Value];
                                     try
                                     {
-                                        media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.Media);
-                                        if (TraceLevel != System.Diagnostics.TraceLevel.Off)
+                                        if (media.IsOpen)
                                         {
-                                            media.Trace = TraceLevel;
-                                            media.OnTrace += new TraceEventHandler(media_OnTrace);
+                                            media_OnMediaStateChange(media, new MediaStateEventArgs(MediaState.Open));
                                         }
-                                        media.Settings = taskinfo.Settings;
-                                        media.OnReceived += new ReceivedEventHandler(media_OnReceived);
-                                        media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
-                                        media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
-                                        media.Open();
-                                        medias.Add(taskinfo.Settings, media);
+                                        else
+                                        {
+                                            if (TraceLevel != System.Diagnostics.TraceLevel.Off)
+                                            {
+                                                media.Trace = TraceLevel;
+                                                media.OnTrace += new TraceEventHandler(media_OnTrace);
+                                            }
+                                            media.Settings = taskinfo.MediaSettings[0].Value;
+                                            media.OnReceived += new ReceivedEventHandler(media_OnReceived);
+                                            media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
+                                            media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
+                                            media.Open();
+                                        }
                                     }
                                     catch (Exception ex)
                                     {
@@ -420,15 +558,46 @@ namespace GuruxAMI.Client
                                         throw ex;
                                     }
                                 }
-                                taskinfo.Task.State = TaskState.Succeeded;
-                                TaskModified.Set();
+                                else
+                                {
+                                    try
+                                    {
+                                        media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
+                                        if (TraceLevel != System.Diagnostics.TraceLevel.Off)
+                                        {
+                                            media.Trace = TraceLevel;
+                                            media.OnTrace += new TraceEventHandler(media_OnTrace);
+                                        }
+                                        media.Settings = taskinfo.MediaSettings[0].Value;
+                                        media.OnReceived += new ReceivedEventHandler(media_OnReceived);
+                                        media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
+                                        media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
+                                        media.Open();
+                                        medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (media != null)
+                                        {
+                                            if (TraceLevel != System.Diagnostics.TraceLevel.Off)
+                                            {
+                                                media.OnTrace -= new TraceEventHandler(media_OnTrace);
+                                            }
+                                            media.OnReceived -= new ReceivedEventHandler(media_OnReceived);
+                                            media.OnMediaStateChange -= new MediaStateChangeEventHandler(media_OnMediaStateChange);
+                                            media.OnError -= new Gurux.Common.ErrorEventHandler(media_OnError);
+                                        }
+                                        throw ex;
+                                    }
+                                }
+                                taskinfo.Task.State = TaskState.Succeeded;                                
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaClose)
                             {
-                                if (medias.ContainsKey(taskinfo.Settings))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
                                 {
-                                    IGXMedia media = medias[taskinfo.Settings];
-                                    medias.Remove(taskinfo.Settings);
+                                    IGXMedia media = medias[taskinfo.MediaSettings[0].Value];
+                                    medias.Remove(taskinfo.MediaSettings[0].Value);
                                     media.Close();
                                     media.OnMediaStateChange -= new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                     media.OnError -= new Gurux.Common.ErrorEventHandler(media_OnError);
@@ -439,17 +608,16 @@ namespace GuruxAMI.Client
                                     }
                                 }
                                 leaveConnectionOpen = false;
-                                taskinfo.Task.State = TaskState.Succeeded;
-                                TaskModified.Set();                                        
+                                taskinfo.Task.State = TaskState.Succeeded;                                
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaWrite)
                             {
                                 IGXMedia media;
-                                if (!medias.ContainsKey(taskinfo.Settings))
+                                if (!medias.ContainsKey(taskinfo.MediaSettings[0].Value))
                                 {
-                                    media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.Media);
-                                    medias.Add(taskinfo.Settings, media);
-                                    media.Settings = taskinfo.Settings;
+                                    media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
+                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                    media.Settings = taskinfo.MediaSettings[0].Value;
                                     media.OnReceived += new ReceivedEventHandler(media_OnReceived);
                                     media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                     media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
@@ -457,114 +625,22 @@ namespace GuruxAMI.Client
                                 }
                                 else
                                 {
-                                    media = medias[taskinfo.Settings];
+                                    media = medias[taskinfo.MediaSettings[0].Value];
                                 }
                                 media.Send(Gurux.Common.GXCommon.HexToBytes(taskinfo.Data, false), null);
-                                taskinfo.Task.State = TaskState.Succeeded;
-                                TaskModified.Set();
+                                taskinfo.Task.State = TaskState.Succeeded;                                
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaState ||
                                 taskinfo.Task.TaskType == TaskType.MediaError)
                             {
                                 //This might happend is DC is closed and there are event info left.
-                                taskinfo.Task.State = TaskState.Succeeded;
-                                TaskModified.Set();
+                                taskinfo.Task.State = TaskState.Succeeded;                                
                             }
                             else
                             {
-                                try
-                                {
-                                    //If device template is not loaded yet.
-                                    if (path == null)
-                                    {
-                                        path = Path.Combine(Gurux.Common.GXCommon.ApplicationDataPath, "Gurux");
-                                        if (!Directory.Exists(path))
-                                        {
-                                            Directory.CreateDirectory(path);
-                                            Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
-                                        }
-                                        path = Path.Combine(path, "Gurux.DeviceSuite");
-                                        if (!Directory.Exists(path))
-                                        {
-                                            Directory.CreateDirectory(path);
-                                            Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
-                                        }
-                                        path = Path.Combine(path, "DeviceTemplates");
-                                        if (!Directory.Exists(path))
-                                        {
-                                            Directory.CreateDirectory(path);
-                                            Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
-                                        }
-                                        path = Path.Combine(path, taskinfo.DeviceTemplate.ToString());
-                                        //Load Device template if not loaded yet.                                 
-                                        if (!Directory.Exists(path))
-                                        {
-                                            Directory.CreateDirectory(path);
-                                            Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
-                                            byte[] data = DC.GetDeviceTemplateData(taskinfo.DeviceTemplate);
-                                            pc.Import(data, path);
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    path = null;
-                                    if (Directory.Exists(path))
-                                    {
-                                        Directory.Delete(path, true);
-                                    }
-                                    lock (info.Exceptions)
-                                    {
-                                        info.Exceptions.Add(taskinfo, ex);
-                                        taskinfo.Task.State = TaskState.Failed;
-                                        TaskModified.Set();
-                                    }
-                                }
-                                try
-                                {
-                                    //Save executed task. This is used if error occures.                                    
-                                    pc.Connect(path, taskinfo);
-                                    //Read or write device.
-                                    if (taskinfo.Task.TaskType == TaskType.Read ||
-                                        taskinfo.Task.TaskType == TaskType.Write)
-                                    {
-                                        pc.ExecuteTransaction(taskinfo);
-                                        taskinfo.Task.State = TaskState.Succeeded;
-                                        TaskModified.Set();
-                                    }
-                                    else if (taskinfo.Task.TaskType == TaskType.StartMonitor)
-                                    {
-                                        leaveConnectionOpen = true;
-                                        pc.StartMonitoring();
-                                        taskinfo.Task.State = TaskState.Succeeded;
-                                        TaskModified.Set();
-                                    }
-                                    else if (taskinfo.Task.TaskType == TaskType.StopMonitor)
-                                    {
-                                        leaveConnectionOpen = false;
-                                        pc.StopMonitoring();
-                                        taskinfo.Task.State = TaskState.Succeeded;
-                                        TaskModified.Set();
-                                    }
-                                    else
-                                    {
-                                        throw new Exception("Invalid task type.");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    lock (info.Exceptions)
-                                    {
-                                        info.Exceptions.Add(taskinfo, ex);
-                                        taskinfo.Task.State = TaskState.Failed;
-                                        TaskModified.Set();
-                                    }
-                                    if (m_Error != null)
-                                    {
-                                        m_Error(this, ex);
-                                    }
-                                }
+                                HandleDevice(info, pc, ref path, ref leaveConnectionOpen, taskinfo);
                             }
+                            info.TaskExecuted.Set();
                         }
                     }
                 }
@@ -577,7 +653,7 @@ namespace GuruxAMI.Client
                         {
                             info.Exceptions.Add(taskinfo, ex);
                             taskinfo.Task.State = TaskState.Failed;
-                            TaskModified.Set();
+                            info.TaskExecuted.Set();
                         }
                     }
                     if (m_Error != null)
@@ -585,14 +661,107 @@ namespace GuruxAMI.Client
                         m_Error(this, ex);
                     }
                 }
-                finally
-                {
-                    info.ExecutingTask.Reset();
-                }
             }
             pc.Close();
             //Unload app domain.
             System.AppDomain.Unload(td);
+        }
+
+        private void HandleDevice(GXClaimedInfo info, GXProxyClass pc, ref string path, ref bool leaveConnectionOpen, GXClaimedTask taskinfo)
+        {
+            try
+            {
+                //If device template is not loaded yet.
+                if (path == null)
+                {
+                    path = Path.Combine(Gurux.Common.GXCommon.ApplicationDataPath, "Gurux");
+                    if (!Directory.Exists(path))
+                    {
+                        Directory.CreateDirectory(path);
+                        Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
+                    }
+                    path = Path.Combine(path, "Gurux.DeviceSuite");
+                    if (!Directory.Exists(path))
+                    {
+                        Directory.CreateDirectory(path);
+                        Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
+                    }
+                    path = Path.Combine(path, "DeviceProfiles");
+                    if (!Directory.Exists(path))
+                    {
+                        Directory.CreateDirectory(path);
+                        Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
+                    }
+                    path = Path.Combine(path, taskinfo.DeviceProfile.ToString());
+                    //Load Device template if not loaded yet.                                 
+                    if (!Directory.Exists(path))
+                    {
+                        Directory.CreateDirectory(path);
+                        Gurux.Common.GXFileSystemSecurity.UpdateDirectorySecurity(path);
+                        byte[] data = DC.GetDeviceProfilesData(taskinfo.DeviceProfile);
+                        GXDeviceProfile type = pc.Import(data, path);
+                        if (!(type is GXPublishedDeviceProfile))
+                        {
+                            File.Copy(type.Path, Path.Combine(path, taskinfo.DeviceProfile.ToString() + ".gxp"), true);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                path = null;
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, true);
+                }
+                lock (info.Exceptions)
+                {
+                    info.Exceptions.Add(taskinfo, ex);
+                    taskinfo.Task.State = TaskState.Failed;
+                }
+            }
+            try
+            {
+                //Save executed task. This is used if error occures.                                    
+                pc.Connect(path, taskinfo);
+                //Read or write device.
+                if (taskinfo.Task.TaskType == TaskType.Read ||
+                    taskinfo.Task.TaskType == TaskType.Write)
+                {
+                    System.Diagnostics.Debug.WriteLine("DC start to read target: " + taskinfo.Task.Id.ToString() + " " + taskinfo.Task.TargetDeviceID.ToString());
+                    pc.ExecuteTransaction(taskinfo);
+                    taskinfo.Task.State = TaskState.Succeeded;
+                    System.Diagnostics.Debug.WriteLine("DC end reading target: " + taskinfo.Task.Id.ToString() + " " + Guid.ToString());                                        
+                }
+                else if (taskinfo.Task.TaskType == TaskType.StartMonitor)
+                {
+                    leaveConnectionOpen = true;
+                    pc.StartMonitoring();
+                    taskinfo.Task.State = TaskState.Succeeded;
+                }
+                else if (taskinfo.Task.TaskType == TaskType.StopMonitor)
+                {
+                    leaveConnectionOpen = false;
+                    pc.StopMonitoring();
+                    taskinfo.Task.State = TaskState.Succeeded;
+                }
+                else
+                {
+                    throw new Exception("Invalid task type.");
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (info.Exceptions)
+                {
+                    info.Exceptions.Add(taskinfo, ex);
+                    taskinfo.Task.State = TaskState.Failed;
+                }
+                if (m_Error != null)
+                {
+                    m_Error(this, ex);
+                }
+            }
         }
 
         void media_OnTrace(object sender, TraceEventArgs e)
@@ -616,7 +785,7 @@ namespace GuruxAMI.Client
         {
             if (DC != null)
             {
-                DC.MediaError(taskinfo.Task, ex);
+                //TODO: DC.MediaError(taskinfo.Task, ex);
             }
         }
 
@@ -654,204 +823,169 @@ namespace GuruxAMI.Client
         /// Wait new tasks and and create instance from DC if not created yet.
         /// </summary>
         void Run()
-        {
-            //Read exists tasks.
-            GXAmiTask[] tasks = DC.GetTasks(TaskState.Pending);
-            if (tasks.Length != 0)
+        {            
+            //Read tasks that was prosessed when app was closed.
+            //This is used to start example monitoring again.
+            GXClaimedTask executedTask = LoadExecutedTask(this.Guid);
+            if (executedTask != null)
             {
-                DC_OnTasksAdded(DC, tasks);
-            }
-            List<Thread> Threads = new List<Thread>();
-            while (!Closing.WaitOne(1))
-            {
-                //Wait until new task is added.
-                TaskModified.WaitOne();
-                if (!Closing.WaitOne(1))
+                if (executedTask.Task.TaskType == TaskType.StartMonitor)
                 {
+                    TaskModified.Set();
+                }
+            }
+            else
+            {
+                GXAmiTask[] pendingTasks = DC.GetTasks(TaskState.Pending, false);
+                if (pendingTasks.Length != 0)
+                {
+                    DC_OnTasksAdded(DC, pendingTasks);
+                }
+            }
+            //Save device threads so we can wait whem on close.
+            while (true)
+            {
+                List<EventWaitHandle> events = new List<EventWaitHandle>();
+                events.Add(Closing);
+                events.Add(TaskModified);
+                foreach (GXClaimedInfo it in ClaimedTasks.Values.ToArray())
+                {
+                    events.Add(it.TaskExecuted);
+                }
+
+                int ret = EventWaitHandle.WaitAny(events.ToArray());
+                //If closing.
+                if (ret == 0)
+                {
+                    break;
+                }                
+                //If new task added.
+                if (ret == 1)
+                {
+                    //System.Diagnostics.Debug.WriteLine("DC task added: " + Guid.ToString());
                     //Get new task
-                    GXClaimedTask taskinfo = null;
+                    GXClaimedTask taskinfo = executedTask;
+                    executedTask = null;
                     lock (UnclaimedTasks)
                     {
-                        taskinfo = null;
-                        foreach (GXAmiTask task in UnclaimedTasks)
+                        for (int pos = 0; pos != UnclaimedTasks.Count; ++pos)
                         {
-                            if (task.State == TaskState.Pending)
-                            {
-                                lock (UnclaimedTasks)
+                                GXAmiTask task = UnclaimedTasks[pos];
+                                //New task added.
+                                if (task.State == TaskState.Pending)
                                 {
-                                    bool idle = true;
-                                    if (task.TargetDeviceID != 0)
-                                    {
-                                        idle = !ClaimedTasks.ContainsKey(task.TargetDeviceID) ||
-                                            ClaimedTasks[task.TargetDeviceID].ClaimedTasks.Count == 0;
-                                    }
-                                    else
-                                    {
-                                        idle = !ClaimedTasks.ContainsKey(task.DataCollectorGuid) ||
-                                            ClaimedTasks[task.DataCollectorGuid].ClaimedTasks.Count == 0;
-                                    }
-                                    //If collector is reading do not claim task before collector is finished reading.
-                                    if (idle)
-                                    {
-                                        try
-                                        {
-                                            UnclaimedTasks.Remove(task);
-                                            taskinfo = DC.ClaimTask(task);
-                                            if (taskinfo != null)
-                                            {
-                                                if (m_TasksClaimed != null)
-                                                {
-                                                    task.DataCollectorID = taskinfo.DataCollectorID;
-                                                    m_TasksClaimed(this, new GXAmiTask[] { task });
-                                                }
-                                            }
-                                            break;
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            if (m_Error != null)
-                                            {
-                                                m_Error(this, ex);
-                                            }
-                                        }
-                                    }
-                                }
-                            }                            
-                        }
-                    }
-                    if (taskinfo == null)
-                    {
-                        foreach (var c in ClaimedTasks)
-                        {                            
-                            foreach (GXClaimedTask it2 in c.Value.ClaimedTasks)
-                            {
-                                GXAmiTask task = it2.Task;
-                                //Remove task after successful reading.
-                                if (task.State == TaskState.Succeeded)
-                                {
-                                    lock (c.Value.ClaimedTasks)
-                                    {
-                                        c.Value.ClaimedTasks.Remove(it2);
-                                    }
-                                    try
-                                    {
-                                        System.Diagnostics.Debug.WriteLine("Remove task: " + it2.Task.Id);
-                                        DC.RemoveTask(task, true);
-                                        System.Diagnostics.Debug.WriteLine("Remove task succeeded: " + it2.Task.Id);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        if (m_Error != null)
-                                        {
-                                            m_Error(this, ex);
-                                        }
-                                    }
                                     lock (UnclaimedTasks)
                                     {
-                                        //Search next unclaimed task and execute it.
-                                        foreach (GXAmiTask ut in UnclaimedTasks)
+                                        bool idle = true;
+                                        //If task is sent to the device
+                                        if (task.TargetDeviceID != null)
                                         {
-                                            if (ut.State == TaskState.Pending)
+                                            idle = !ClaimedTasks.ContainsKey(task.TargetDeviceID.Value) ||
+                                                ClaimedTasks[task.TargetDeviceID.Value].ClaimedTasks.Count == 0;
+                                        }
+                                        else //If task is sent to the DC.
+                                        {
+                                            idle = !ClaimedTasks.ContainsKey(task.DataCollectorGuid) ||
+                                                ClaimedTasks[task.DataCollectorGuid].ClaimedTasks.Count == 0;
+                                        }
+                                        //If collector is reading do not claim task before collector is finished reading.
+                                        if (idle)
+                                        {
+                                            try
                                             {
-                                                //If collector is reading do not claim task before collector is finished reading.
-                                                if (!ClaimedTasks.ContainsKey(ut.TargetDeviceID) ||
-                                                    ClaimedTasks[ut.TargetDeviceID].ClaimedTasks.Count == 0)
+                                                taskinfo = DC.ClaimTask(task);
+                                                //If other DC is claimed the task.
+                                                if (taskinfo == null || task.Id != taskinfo.Task.Id)
                                                 {
-                                                    TaskModified.Set();
+                                                    //Remove task that was asked, but failed.
+                                                    UnclaimedTasks.Remove(task);
+                                                    //Remove executed task.
+                                                    if (taskinfo != null && task.Id != taskinfo.Task.Id)
+                                                    {
+                                                        UnclaimedTasks.Remove(taskinfo.Task);
+                                                        if (taskinfo.Task.State == TaskState.Processing)
+                                                        {
+                                                            System.Diagnostics.Debug.Assert(false);
+                                                        }
+                                                        task = taskinfo.Task;
+                                                    }
+                                                }
+                                                else //DC claimed task.
+                                                {
+                                                    task = taskinfo.Task;
+                                                    UnclaimedTasks.Remove(task);
+                                                }
+                                                if (taskinfo != null)
+                                                {
+                                                    //This should be newer happend.
+                                                    if (task.State == TaskState.Processing)
+                                                    {
+                                                        System.Diagnostics.Debug.Assert(false);
+                                                    }
+                                                    System.Diagnostics.Debug.WriteLine("DC Start to process task: " + Guid.ToString() + " " + task.Id.ToString() + " " + task.TargetDeviceID.ToString());
+                                                    if (m_TasksClaimed != null)
+                                                    {
+                                                        task.DataCollectorID = taskinfo.DataCollectorID;
+                                                        m_TasksClaimed(this, new GXAmiTask[] { task });
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    System.Diagnostics.Debug.WriteLine("DC Failed to get task: " + Guid.ToString() + " " + task.Id.ToString());
                                                 }
                                                 break;
                                             }
-                                        }
-                                    }
-                                    System.Diagnostics.Debug.WriteLine("Wait next task.");
-                                    break; //Break here because task is removed.                                    
-                                }
-                                else if (task.State == TaskState.Timeout)
-                                {
-                                    try
-                                    {
-                                        lock (c.Value.ClaimedTasks)
-                                        {
-                                            c.Value.ClaimedTasks.Remove(it2);
-                                        }
-                                        DC.AddDeviceError(task, new TimeoutException(), 1);
-                                        //Remove failed task.
-                                        DC.RemoveTask(task, true);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        if (m_Error != null)
-                                        {
-                                            m_Error(this, ex);
-                                        }
-                                    }
-                                    break; //Break here because task is removed.      
-                                }
-                                else if (task.State == TaskState.Failed)
-                                {
-                                    try
-                                    {
-                                        lock (c.Value.ClaimedTasks)
-                                        {
-                                            c.Value.ClaimedTasks.Remove(it2);
-                                        }
-                                        foreach (var it in c.Value.Exceptions)
-                                        {
-                                            //If device is caused the error.
-                                            if (it.Key.Task.TargetDeviceID != 0)
+                                            catch (Exception ex)
                                             {
-                                                DC.AddDeviceError(it.Key.Task, it.Value, 1);
+                                                if (m_Error != null)
+                                                {
+                                                    m_Error(this, ex);
+                                                }
                                             }
-                                            //If DC is caused the error.
-                                            else if (it.Key.Task.DataCollectorID != 0)
+                                        }
+                                        else//If task is processed. Wait until task is executed and read again...
+                                        {
+                                            System.Diagnostics.Debug.WriteLine("DC is already processing task: " + Guid.ToString());
+                                            if (task.TargetDeviceID != null)
                                             {
-                                                DC.AddDeviceError(it.Key.Task, it.Value, 1);
+                                                ClaimedTasks[task.TargetDeviceID].TaskExecuted.WaitOne(50000);
                                             }
                                             else
                                             {
-                                                throw new Exception("Unknown target.");
+                                                ClaimedTasks[task.DataCollectorGuid].TaskExecuted.WaitOne(50000);
                                             }
-                                        }
-                                        c.Value.Exceptions.Clear();
-                                        //Remove failed task.
-                                        DC.RemoveTask(task, true);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        if (m_Error != null)
-                                        {
-                                            m_Error(this, ex);
+                                            break;
                                         }
                                     }
-                                    break; //Break here because task is removed.      
                                 }
-                            }
                         }
                     }
-                    //If task is claimed.
+                    //If new task is claimed.
                     if (taskinfo != null)
                     {
-                        if (taskinfo.Task.TargetDeviceID != 0)
+                        if (taskinfo.Task.TargetDeviceID != null)
                         {
+                            SaveExecutedTask(this.Guid, taskinfo);
                             GXClaimedInfo dcinfo = null;
-                            if (ClaimedTasks.ContainsKey(taskinfo.Task.TargetDeviceID))
+                            //If task is sent to existing device.
+                            if (ClaimedTasks.ContainsKey(taskinfo.Task.TargetDeviceID.Value))
                             {
-                                dcinfo = ClaimedTasks[taskinfo.Task.TargetDeviceID];
+                                dcinfo = ClaimedTasks[taskinfo.Task.TargetDeviceID.Value];
                                 lock (dcinfo.ClaimedTasks)
                                 {
                                     dcinfo.ClaimedTasks.Add(taskinfo);
                                     dcinfo.NewTask.Set();
                                 }
                             }
-                            else
+                            else//If task is sent to new device.
                             {
                                 dcinfo = new GXClaimedInfo();
-                                dcinfo.ClaimedTasks.Add(taskinfo);
-                                ClaimedTasks.Add(taskinfo.Task.TargetDeviceID, dcinfo);
+                                dcinfo.ClaimedTasks.Add(taskinfo);                                
+                                ClaimedTasks.Add(taskinfo.Task.TargetDeviceID.Value, dcinfo);
                                 Thread thread = new Thread(new ParameterizedThreadStart(DeviceCollector));
                                 thread.Start(dcinfo);
-                                Threads.Add(thread);
-                            }
+                                dcinfo.WorkThread = thread;
+                            }                            
                         }
                         //Task is send to Media
                         else if (taskinfo.Task.TargetType == TargetType.Media)
@@ -869,22 +1003,150 @@ namespace GuruxAMI.Client
                             else
                             {
                                 dcinfo = new GXClaimedInfo();
-                                dcinfo.ClaimedTasks.Add(taskinfo);
+                                dcinfo.ClaimedTasks.Add(taskinfo);                                
                                 ClaimedTasks.Add(taskinfo.Task.DataCollectorGuid, dcinfo);
                                 Thread thread = new Thread(new ParameterizedThreadStart(DeviceCollector));
                                 thread.Start(dcinfo);
-                                Threads.Add(thread);
+                                dcinfo.WorkThread = thread;
                             }
                         }
                     }
                 }
+                else
+                {
+                    ret -= 2;
+                    GXClaimedInfo c = ClaimedTasks[ClaimedTasks.Keys.ElementAt(ret)];                    
+                    c.TaskExecuted.Reset();
+                    System.Diagnostics.Debug.WriteLine("Task handled: " + c.ClaimedTasks[0].Task.Id.ToString());
+                    foreach (GXClaimedTask it2 in c.ClaimedTasks)
+                    {
+                        GXAmiTask task = it2.Task;                        
+                        //This should be newer happend.
+                        if (task.State == TaskState.Processing)
+                        {
+                            System.Diagnostics.Debug.Assert(false);
+                        }
+                        //Remove task after successful reading.
+                        if (task.State == TaskState.Succeeded)
+                        {
+                            lock (c.ClaimedTasks)
+                            {
+                                c.ClaimedTasks.Remove(it2);                                
+                            }
+                            try
+                            {
+                                DC.RemoveTask(task);
+                                //Close thread if device task is executed and connection is not leave open. 
+                                if ( task.TaskType != TaskType.StartMonitor)
+                                {
+                                    if (task.TargetDeviceID != null)
+                                    {
+                                        c.Closing.Set();
+                                        ClaimedTasks.Remove(task.TargetDeviceID.Value);                                        
+                                    }
+                                    else if (task.TaskType == TaskType.MediaClose)//if DC task is executed.
+                                    {
+                                        c.Closing.Set();
+                                        ClaimedTasks.Remove(task.DataCollectorGuid);                                        
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (m_Error != null)
+                                {
+                                    m_Error(this, ex);
+                                }
+                            }
+                            lock (UnclaimedTasks)
+                            {
+                                //Search next unclaimed task and execute it.
+                                foreach (GXAmiTask ut in UnclaimedTasks)
+                                {
+                                    if (ut.State == TaskState.Pending)
+                                    {
+                                        TaskModified.Set();
+                                        break;
+                                    }
+                                }
+                            }
+                            //System.Diagnostics.Debug.WriteLine("Wait next task.");
+                            break; //Break here because task is removed.                                    
+                        }
+                        else if (task.State == TaskState.Timeout)
+                        {
+                            try
+                            {
+                                lock (c.ClaimedTasks)
+                                {
+                                    c.ClaimedTasks.Remove(it2);
+                                }
+                                DC.AddDeviceError(task, new TimeoutException(), 1);
+                                //Remove failed task.
+                                DC.RemoveTask(task);
+                            }
+                            catch (Exception ex)
+                            {
+                                if (m_Error != null)
+                                {
+                                    m_Error(this, ex);
+                                }
+                            }
+                            break; //Break here because task is removed.      
+                        }
+                        else if (task.State == TaskState.Failed)
+                        {
+                            try
+                            {
+                                lock (c.ClaimedTasks)
+                                {
+                                    c.ClaimedTasks.Remove(it2);
+                                }
+                                foreach (var it in c.Exceptions)
+                                {
+                                    //If device is caused the error.
+                                    if (it.Key.Task.TargetDeviceID.HasValue)
+                                    {
+                                        DC.AddDeviceError(it.Key.Task, it.Value, 1);
+                                    }
+                                    //If DC is caused the error.
+                                    else if (it.Key.Task.DataCollectorID != 0)
+                                    {
+                                        DC.AddDeviceError(it.Key.Task, it.Value, 1);
+                                    }
+                                    else
+                                    {
+                                        throw new Exception("Unknown target.");
+                                    }
+                                }
+                                c.Exceptions.Clear();
+                                //Remove failed task.
+                                DC.RemoveTask(task);
+                            }
+                            catch (Exception ex)
+                            {
+                                if (m_Error != null)
+                                {
+                                    m_Error(this, ex);
+                                }
+                            }
+                            break; //Break here because task is removed.      
+                        }
+                    }
+                }
             }
-            //Wait until thereas are closed.
-            foreach (Thread it in Threads)
+            //Tell all collector threads to close.
+            List<Thread> threads = new List<Thread>();
+            foreach(GXClaimedInfo it in ClaimedTasks.Values)
+            {                
+                it.Closing.Set();
+                threads.Add(it.WorkThread);
+            }
+            //Wait until threads are closed.
+            foreach (Thread it in threads)
             {
                 it.Join();
-            }
-            Closed.Set();     
+            }            
         }
 
         /// <summary>
@@ -922,8 +1184,9 @@ namespace GuruxAMI.Client
             {
                 foreach (GXAmiTask task in tasks)
                 {
-                    System.Diagnostics.Debug.WriteLine("New task added: " + task.Id);
-                    if (task.DataCollectorGuid != Guid.Empty && DC.DataCollectorGuid != task.DataCollectorGuid)
+                    //System.Diagnostics.Debug.WriteLine("New task added: " + task.Id);
+                    if (task.DataCollectorGuid != Guid.Empty && 
+                        DC.DataCollectorGuid != task.DataCollectorGuid)
                     {
                         throw new Exception("Wrong Data Collector.");
                     }                    
@@ -948,6 +1211,10 @@ namespace GuruxAMI.Client
             {
                 foreach (GXAmiTask task in tasks)
                 {
+                    if (task.DataCollectorGuid != this.Guid)
+                    {
+                        throw new Exception("Wrong Data Collector.");
+                    }
                     foreach (GXAmiTask t in UnclaimedTasks)
                     {
                         if (t.Id == task.Id)
@@ -955,11 +1222,7 @@ namespace GuruxAMI.Client
                             UnclaimedTasks.Remove(t);
                             break;
                         }
-                    }
-                    if (task.DataCollectorGuid != this.Guid)
-                    {
-                        throw new Exception("Wrong Data Collector.");
-                    }
+                    }                    
                 }
                 if (m_TasksRemoved != null)
                 {
@@ -976,11 +1239,11 @@ namespace GuruxAMI.Client
             {
                 //Close collector thread.                
                 Closing.Set();
-                TaskModified.Set();
-                Closed.WaitOne(5000);
+                TaskModified.Set();                
                 if (Thread != null)
                 {
-                    Thread.Abort();
+                    Thread.Join();
+                    Thread = null;
                 }
                 DC.Dispose();
                 DC = null;

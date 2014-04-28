@@ -42,7 +42,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Gurux Ltd")]
 [assembly: AssemblyProduct("GuruxAMI.Common")]
-[assembly: AssemblyCopyright("Copyright (c) 1998-2013 Gurux Ltd. All rights reserved.")]
+[assembly: AssemblyCopyright("Copyright (c) 1998-2014 Gurux Ltd. All rights reserved.")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -65,4 +65,4 @@ using System.Runtime.InteropServices;
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyVersion("1.1.4.1")]//DO NOT CHANGE!
-[assembly: AssemblyFileVersion("1.1.12.1")]
+[assembly: AssemblyFileVersion("1.1.19.1")]

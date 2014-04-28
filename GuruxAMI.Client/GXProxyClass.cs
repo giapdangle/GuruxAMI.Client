@@ -120,8 +120,7 @@ namespace GuruxAMI.Client
 
         /// <summary>
         /// Save executed task. This is used if error occures.
-        /// </summary>
-        
+        /// </summary>        
         GXClaimedTask ExecutedTask;
         GXDeviceList DeviceList;
         GXDevice Device;
@@ -172,9 +171,9 @@ namespace GuruxAMI.Client
             return null;
         }
 
-        public void Import(byte[] data, string path)
+        public GXDeviceProfile Import(byte[] data, string path)
         {
-            GXZip.Import(null, data, path + "\\");
+            return GXZip.Import(null, data, path + "\\");
         }
 
         bool ShouldSerialize(object value1, object value2)
@@ -250,6 +249,7 @@ namespace GuruxAMI.Client
             if (DeviceList != null)
             {
                 DeviceList.Dispose();
+                DeviceList = null;
             }
         }
 
@@ -325,15 +325,7 @@ namespace GuruxAMI.Client
             AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
             AppDomain.CurrentDomain.TypeResolve += new ResolveEventHandler(CurrentDomain_TypeResolve);
             GXDeviceList.Update(path);
-            string filename;
-            if (string.IsNullOrEmpty(taskinfo.Device.PresetName))
-            {
-                filename = Path.Combine(path, taskinfo.Device.Template + ".gxt");
-            }
-            else
-            {
-                filename = Path.Combine(path, taskinfo.Device.TemplateGuid + ".gxt");
-            }
+            string filename = Path.Combine(path, taskinfo.Device.ProfileGuid + ".gxp");            
             Device = GXDevice.Load(filename);
             Device.ID = taskinfo.Device.Id;
             group.Devices.Add(Device);
@@ -357,15 +349,40 @@ namespace GuruxAMI.Client
 
             //Load medias to this assembly domin.
             Gurux.Communication.GXClient.GetAvailableMedias();
-            Gurux.Common.IGXMedia media = Device.GXClient.SelectMedia(taskinfo.Media);
-            media.Settings = taskinfo.Settings;
-            Device.GXClient.AssignMedia(media);
             if (taskinfo.Device.TraceLevel != System.Diagnostics.TraceLevel.Off)
             {
                 Device.Trace = taskinfo.Device.TraceLevel;
                 Device.OnTrace += new TraceEventHandler(Device_OnTrace);
             }
-            Device.Connect();         
+            Exception lastException = null;
+            int pos = -1;
+            Gurux.Common.IGXMedia media = null;
+            foreach (var it in taskinfo.MediaSettings)
+            {
+                try
+                {
+                    ++pos;
+                    //If media is changed.
+                    if (media == null || media.MediaType != taskinfo.MediaSettings[pos].Key)
+                    {
+                        media = Device.GXClient.SelectMedia(taskinfo.MediaSettings[pos].Key);
+                        Device.GXClient.AssignMedia(media);
+                    }
+                    media.Settings = taskinfo.MediaSettings[pos].Value;                    
+                    lastException = null;                        
+                    Device.Connect();
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    //If connection fails try next redundant connectio.
+                    lastException = ex;                    
+                }
+            }
+            if (lastException != null)
+            {
+                throw lastException;
+            }
         }
 
         /// <summary>
