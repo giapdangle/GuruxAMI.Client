@@ -368,7 +368,7 @@ namespace GuruxAMI.Client
                         media = Device.GXClient.SelectMedia(taskinfo.MediaSettings[pos].Key);
                         Device.GXClient.AssignMedia(media);
                     }
-                    media.Settings = taskinfo.MediaSettings[pos].Value;                    
+                    media.Settings = taskinfo.MediaSettings[pos].Value.Value;                    
                     lastException = null;                        
                     Device.Connect();
                     break;

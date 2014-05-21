@@ -482,47 +482,67 @@ namespace GuruxAMI.Client
                             if (taskinfo.Task.TaskType == TaskType.MediaGetProperty)
                             {
                                 IGXMedia media = null;
-                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value.Key))
                                 {
-                                    media = medias[taskinfo.MediaSettings[0].Value];
+                                    media = medias[taskinfo.MediaSettings[0].Value.Key];
                                 }
                                 else
                                 {
                                     media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
-                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                    medias.Add(taskinfo.MediaSettings[0].Value.Key, media);
                                 }
-                                PropertyDescriptor prop = TypeDescriptor.GetProperties(media)[taskinfo.Data];
-                                object value = prop.GetValue(media);
-                                taskinfo.Task.State = TaskState.Succeeded;                                
-                                Dictionary<string, object> properties = new Dictionary<string,object>();
-                                properties.Add(taskinfo.Data, value);
-                                DC.SetMediaProperties(this.Guid, taskinfo.MediaSettings[0].Key, taskinfo.MediaSettings[0].Value, properties);                                
+                                media.Tag = taskinfo.Task;
+                                Dictionary<string, object> properties = new Dictionary<string, object>();
+                                foreach (string it in taskinfo.Data.Split(';'))
+                                {
+                                    PropertyDescriptor prop = TypeDescriptor.GetProperties(media)[it];
+                                    object value = prop.GetValue(media);
+                                    taskinfo.Task.State = TaskState.Succeeded;
+                                    properties.Add(it, value);
+                                }
+                                DC.SetMediaProperties(this.Guid, taskinfo.MediaSettings[0].Key, taskinfo.MediaSettings[0].Value.Key, properties, taskinfo.Task.Id);                                
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaSetProperty)
                             {
                                 IGXMedia media = null;
-                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value.Key))
                                 {
-                                    media = medias[taskinfo.MediaSettings[0].Value];
+                                    media = medias[taskinfo.MediaSettings[0].Value.Key];
                                 }
                                 else
                                 {
                                     media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
-                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                    medias.Add(taskinfo.MediaSettings[0].Value.Key, media);
                                 }
+                                media.Tag = taskinfo.Task;
                                 string[] tmp = taskinfo.Data.Split(new string[] {Environment.NewLine}, StringSplitOptions.None);
-                                PropertyDescriptor prop = TypeDescriptor.GetProperties(media)[tmp[0]];
-                                object value = Convert.ChangeType(tmp[1], prop.PropertyType);
-                                prop.SetValue(media, value);
+                                string[] names = tmp[0].Split(new char[] { ';' });
+                                string[] values = tmp[1].Split(new char[] { ';' });
+                                PropertyDescriptorCollection properties = TypeDescriptor.GetProperties(media);
+                                for (int pos = 0; pos != names.Length; ++pos)
+                                {
+                                    PropertyDescriptor prop = properties[names[pos]];
+                                    object value;
+                                    if (prop.PropertyType.IsEnum)
+                                    {
+                                        value = Enum.Parse(prop.PropertyType, values[pos]);
+                                    }
+                                    else
+                                    {
+                                        value = Convert.ChangeType(values[pos], prop.PropertyType);
+                                    }
+                                    prop.SetValue(media, value);
+                                }
                                 taskinfo.Task.State = TaskState.Succeeded;                                
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaOpen)
                             {
                                 IGXMedia media = null;
                                 leaveConnectionOpen = true;
-                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value.Key))
                                 {
-                                    media = medias[taskinfo.MediaSettings[0].Value];
+                                    media = medias[taskinfo.MediaSettings[0].Value.Key];
+                                    media.Tag = taskinfo.Task;
                                     try
                                     {
                                         if (media.IsOpen)
@@ -536,7 +556,7 @@ namespace GuruxAMI.Client
                                                 media.Trace = TraceLevel;
                                                 media.OnTrace += new TraceEventHandler(media_OnTrace);
                                             }
-                                            media.Settings = taskinfo.MediaSettings[0].Value;
+                                            media.Settings = taskinfo.MediaSettings[0].Value.Value;
                                             media.OnReceived += new ReceivedEventHandler(media_OnReceived);
                                             media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                             media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
@@ -563,17 +583,18 @@ namespace GuruxAMI.Client
                                     try
                                     {
                                         media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
+                                        media.Tag = taskinfo.Task;
                                         if (TraceLevel != System.Diagnostics.TraceLevel.Off)
                                         {
                                             media.Trace = TraceLevel;
                                             media.OnTrace += new TraceEventHandler(media_OnTrace);
                                         }
-                                        media.Settings = taskinfo.MediaSettings[0].Value;
+                                        media.Settings = taskinfo.MediaSettings[0].Value.Value;
                                         media.OnReceived += new ReceivedEventHandler(media_OnReceived);
                                         media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                         media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
                                         media.Open();
-                                        medias.Add(taskinfo.MediaSettings[0].Value, media);
+                                        medias.Add(taskinfo.MediaSettings[0].Value.Key, media);
                                     }
                                     catch (Exception ex)
                                     {
@@ -594,10 +615,11 @@ namespace GuruxAMI.Client
                             }
                             else if (taskinfo.Task.TaskType == TaskType.MediaClose)
                             {
-                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value))
+                                if (medias.ContainsKey(taskinfo.MediaSettings[0].Value.Key))
                                 {
-                                    IGXMedia media = medias[taskinfo.MediaSettings[0].Value];
-                                    medias.Remove(taskinfo.MediaSettings[0].Value);
+                                    IGXMedia media = medias[taskinfo.MediaSettings[0].Value.Key];
+                                    media.Tag = taskinfo.Task;
+                                    medias.Remove(taskinfo.MediaSettings[0].Value.Key);
                                     media.Close();
                                     media.OnMediaStateChange -= new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                     media.OnError -= new Gurux.Common.ErrorEventHandler(media_OnError);
@@ -613,11 +635,12 @@ namespace GuruxAMI.Client
                             else if (taskinfo.Task.TaskType == TaskType.MediaWrite)
                             {
                                 IGXMedia media;
-                                if (!medias.ContainsKey(taskinfo.MediaSettings[0].Value))
-                                {
+                                if (!medias.ContainsKey(taskinfo.MediaSettings[0].Value.Key))
+                                {                                    
                                     media = new Gurux.Communication.GXClient().SelectMedia(taskinfo.MediaSettings[0].Key);
-                                    medias.Add(taskinfo.MediaSettings[0].Value, media);
-                                    media.Settings = taskinfo.MediaSettings[0].Value;
+                                    media.Tag = taskinfo.Task;
+                                    medias.Add(taskinfo.MediaSettings[0].Value.Key, media);
+                                    media.Settings = taskinfo.MediaSettings[0].Value.Value;
                                     media.OnReceived += new ReceivedEventHandler(media_OnReceived);
                                     media.OnMediaStateChange += new MediaStateChangeEventHandler(media_OnMediaStateChange);
                                     media.OnError += new Gurux.Common.ErrorEventHandler(media_OnError);
@@ -625,7 +648,8 @@ namespace GuruxAMI.Client
                                 }
                                 else
                                 {
-                                    media = medias[taskinfo.MediaSettings[0].Value];
+                                    media = medias[taskinfo.MediaSettings[0].Value.Key];
+                                    media.Tag = taskinfo.Task;
                                 }
                                 media.Send(Gurux.Common.GXCommon.HexToBytes(taskinfo.Data, false), null);
                                 taskinfo.Task.State = TaskState.Succeeded;                                
@@ -651,6 +675,7 @@ namespace GuruxAMI.Client
                         //Taskinfo is null in disconnecting.
                         if (taskinfo != null)
                         {
+                            //Mikko task voidaan ajaa useampaan kertaan esim schedule jolloin taskinfo voi jo olla.
                             info.Exceptions.Add(taskinfo, ex);
                             taskinfo.Task.State = TaskState.Failed;
                             info.TaskExecuted.Set();
@@ -662,7 +687,14 @@ namespace GuruxAMI.Client
                     }
                 }
             }
-            pc.Close();
+            try
+            {
+                pc.Close();
+            }
+            catch (System.Runtime.Remoting.RemotingException)
+            {
+
+            }
             //Unload app domain.
             System.AppDomain.Unload(td);
         }
@@ -785,7 +817,7 @@ namespace GuruxAMI.Client
         {
             if (DC != null)
             {
-                //TODO: DC.MediaError(taskinfo.Task, ex);
+                DC.MediaError((sender as IGXMedia).Tag as GXAmiTask, ex);
             }
         }
 
@@ -796,17 +828,23 @@ namespace GuruxAMI.Client
         /// <param name="e"></param>
         void media_OnMediaStateChange(object sender, MediaStateEventArgs e)
         {
-            if (DC != null && (e.State == MediaState.Open || e.State == MediaState.Closed))
+            if (DC != null && (e.State == MediaState.Open || e.State == MediaState.Closing))
             {
                 IGXMedia media = sender as IGXMedia;
-                DC.MediaStateChange(DC.DataCollectorGuid, media.MediaType, media.Settings, e.State);
+                GXAmiTask t = media.Tag as GXAmiTask;
+                ulong replyId = 0;
+                if (t != null)
+                {
+                    replyId = t.Id;
+                }
+                DC.MediaStateChange(DC.DataCollectorGuid, media.MediaType, media.Name, e.State, replyId);
             }
         }
 
         void media_OnReceived(object sender, ReceiveEventArgs e)
         {
             IGXMedia media = sender as IGXMedia;
-            DC.Write(DC.DataCollectorGuid, media.MediaType, media.Settings, (byte[])e.Data, 0, null);
+            DC.MediaWrite(DC.DataCollectorGuid, media.MediaType, media.Name, (byte[])e.Data, null);
         }
         
         /// <summary>
@@ -862,7 +900,7 @@ namespace GuruxAMI.Client
                 //If new task added.
                 if (ret == 1)
                 {
-                    //System.Diagnostics.Debug.WriteLine("DC task added: " + Guid.ToString());
+                    System.Diagnostics.Debug.WriteLine("DC task added: " + Guid.ToString());
                     //Get new task
                     GXClaimedTask taskinfo = executedTask;
                     executedTask = null;
@@ -925,7 +963,6 @@ namespace GuruxAMI.Client
                                                     System.Diagnostics.Debug.WriteLine("DC Start to process task: " + Guid.ToString() + " " + task.Id.ToString() + " " + task.TargetDeviceID.ToString());
                                                     if (m_TasksClaimed != null)
                                                     {
-                                                        task.DataCollectorID = taskinfo.DataCollectorID;
                                                         m_TasksClaimed(this, new GXAmiTask[] { task });
                                                     }
                                                 }
@@ -1104,6 +1141,8 @@ namespace GuruxAMI.Client
                                 }
                                 foreach (var it in c.Exceptions)
                                 {
+                                    DC.AddDeviceError(it.Key.Task, it.Value, 1);
+                                    /*
                                     //If device is caused the error.
                                     if (it.Key.Task.TargetDeviceID.HasValue)
                                     {
@@ -1118,6 +1157,7 @@ namespace GuruxAMI.Client
                                     {
                                         throw new Exception("Unknown target.");
                                     }
+                                     * */
                                 }
                                 c.Exceptions.Clear();
                                 //Remove failed task.
@@ -1184,7 +1224,7 @@ namespace GuruxAMI.Client
             {
                 foreach (GXAmiTask task in tasks)
                 {
-                    //System.Diagnostics.Debug.WriteLine("New task added: " + task.Id);
+                    System.Diagnostics.Debug.WriteLine("New task added: " + task.Id);
                     if (task.DataCollectorGuid != Guid.Empty && 
                         DC.DataCollectorGuid != task.DataCollectorGuid)
                     {

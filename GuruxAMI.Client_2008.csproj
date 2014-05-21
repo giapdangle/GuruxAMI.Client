@@ -57,6 +57,7 @@
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
     <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Runtime.Serialization">
       <RequiredTargetFramework>3.0</RequiredTargetFramework>
     </Reference>
@@ -65,10 +66,23 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="GuruxAMI.Client\GXAmiClient.cs" />
+    <Compile Include="GuruxAMI.Client\GXAmiClientLoginInfo.cs" />
     <Compile Include="GuruxAMI.Client\GXAmiDataCollectorServer.cs" />
     <Compile Include="GuruxAMI.Client\GXAmiEventListener.cs" />
+    <Compile Include="GuruxAMI.Client\GXAmiLoginForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GuruxAMI.Client\GXAmiLoginForm.designer.cs">
+      <DependentUpon>GXAmiLoginForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="GuruxAMI.Client\GXAmiSchedulerServer.cs" />
     <Compile Include="GuruxAMI.Client\GXProxyClass.cs" />
+    <Compile Include="GuruxAMI.Client\HostForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GuruxAMI.Client\HostForm.Designer.cs">
+      <DependentUpon>HostForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -88,6 +102,11 @@
       <Project>{613F7B0E-2FCD-4DC6-9A64-E4D9E4BE56C4}</Project>
       <Name>GuruxAMI.Common_2008</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="GuruxAMI.Client\GXAmiLoginForm.resx">
+      <DependentUpon>GXAmiLoginForm.cs</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

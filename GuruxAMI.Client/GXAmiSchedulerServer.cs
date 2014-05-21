@@ -94,6 +94,7 @@ namespace GuruxAMI.Client
         SchedulesUpdatedEventHandler m_SchedulesUpdated;
         SchedulesRemovedEventHandler m_SchedulesRemoved;
         SchedulesStateChangedEventHandler m_ScheduleStateChanged;
+        bool sharedClient;
 
         /// <summary>
         /// Constructor
@@ -101,8 +102,19 @@ namespace GuruxAMI.Client
         /// <param name="baseUr">Address of GuruxAMI server.</param>
         public GXAmiSchedulerServer(string baseUr, string userName, string password)
         {
+            sharedClient = false;
             Client = new GXAmiClient(baseUr, userName, password);
         }
+
+        /// <summary>
+        /// Constructor.
+        /// </summary>
+        /// <param name="client"></param>
+        public GXAmiSchedulerServer(GXAmiClient client)
+        {
+            Client = client;
+            sharedClient = true;
+        }        
 
         /// <summary>
         /// Start schedules.
@@ -122,7 +134,10 @@ namespace GuruxAMI.Client
             Client.OnSchedulesRemoved += new SchedulesRemovedEventHandler(Client_OnSchedulesRemoved);
             Client.OnSchedulesUpdated += new SchedulesUpdatedEventHandler(Client_OnSchedulesUpdated);
             Client.OnSchedulesStateChanged += new SchedulesStateChangedEventHandler(Client_OnSchedulesStateChanged);
-            Client.StartListenEvents();
+            if (!sharedClient)
+            {
+                Client.StartListenEvents();
+            }
             Schedules = new Dictionary<ulong, GXAmiSchedule>();
             foreach (GXAmiSchedule it in Client.GetSchedules())
             {
@@ -146,7 +161,10 @@ namespace GuruxAMI.Client
             Client.OnSchedulesRemoved -= new SchedulesRemovedEventHandler(Client_OnSchedulesRemoved);
             Client.OnSchedulesUpdated -= new SchedulesUpdatedEventHandler(Client_OnSchedulesUpdated);
             Client.OnSchedulesStateChanged -= new SchedulesStateChangedEventHandler(Client_OnSchedulesStateChanged);
-            Client.StopListenEvents();
+            if (!sharedClient)
+            {
+                Client.StopListenEvents();
+            }
         }
 
         /// <summary>
@@ -382,7 +400,6 @@ namespace GuruxAMI.Client
                     if (Schedules[it.Id].Status != it.Status)
                     {
                         Schedules[it.Id].Status = it.Status;
-                        /*
                         if (it.Status == ScheduleState.Run)
                         {
                             foreach (GXAmiScheduleTarget t in Schedules[it.Id].Targets)
@@ -394,9 +411,7 @@ namespace GuruxAMI.Client
                                 }
                             }
                         }
-                         * else 
-                         * */
-                        if (it.Status == ScheduleState.Run)
+                        else if (it.Status == ScheduleState.Start)
                         {
                             System.Collections.Generic.IDictionary<string, object> data = new Dictionary<string, object>();
                             data.Add(new KeyValuePair<string, object>("Client", Client));

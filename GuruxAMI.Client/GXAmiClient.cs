@@ -291,6 +291,8 @@ namespace GuruxAMI.Client
 
         static List<GXAmiClient> Listeners;
         JsonServiceClient Client;
+        Dictionary<GXAmiTask, AutoResetEvent> ExecutedTasks = new Dictionary<GXAmiTask, AutoResetEvent>();
+
         //Events
         DeviceProfilesAddedEventHandler m_DeviceProfilesAdded;
         DeviceProfilesRemovedEventHandler m_DeviceProfilesRemoved;
@@ -346,7 +348,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// User is updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event UsersUpdatedEventHandler OnUsersUpdated
         {
             add
@@ -361,8 +362,7 @@ namespace GuruxAMI.Client
 
         /// <summary>
         /// User is removed.
-        /// </summary>
-        /// <param name="sender"></param>
+        /// </summary>        
         public event UsersRemovedEventHandler OnUsersRemoved
         {
             add
@@ -380,7 +380,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New user group(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event UserGroupsAddedEventHandler OnUserGroupsAdded
         {
             add
@@ -396,7 +395,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// User group(s) are updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event UserGroupsUpdatedEventHandler OnUserGroupsUpdated
         {
             add
@@ -412,7 +410,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// User group(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event UserGroupsRemovedEventHandler OnUserGroupsRemoved
         {
             add
@@ -428,7 +425,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New device profile(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceProfilesAddedEventHandler OnDeviceProfilesAdded
         {
             add
@@ -444,7 +440,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// GXAmiDevice profile(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceProfilesRemovedEventHandler OnDeviceProfilesRemoved
         {
             add
@@ -461,7 +456,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New device(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event DevicesAddedEventHandler OnDevicesAdded
         {
             add
@@ -477,7 +471,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Device(s) are updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event DevicesUpdatedEventHandler OnDevicesUpdated
         {
             add
@@ -493,7 +486,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Device(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DevicesRemovedEventHandler OnDevicesRemoved
         {
             add
@@ -508,7 +500,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New device group(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceGroupsAddedEventHandler OnDeviceGroupsAdded
         {
             add
@@ -523,7 +514,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// GXAmiDevice group(s) are updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceGroupsUpdatedEventHandler OnDeviceGroupsUpdated
         {
             add
@@ -538,7 +528,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// GXAmiDevice group(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceGroupsRemovedEventHandler OnDeviceGroupsRemoved
         {
             add
@@ -553,7 +542,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New task(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event TasksAddedEventHandler OnTasksAdded
         {
             add
@@ -569,7 +557,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Task(s) are claimed.
         /// </summary>
-        /// <param name="sender"></param>
         public event TasksClaimedEventHandler OnTasksClaimed
         {
             add
@@ -585,7 +572,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Task(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event TasksRemovedEventHandler OnTasksRemoved
         {
             add
@@ -663,7 +649,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// GXAmiDevice error(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceErrorsAddedEventHandler OnDeviceErrorsAdded
         {
             add
@@ -679,7 +664,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// GXAmiDevice error(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceErrorsRemovedEventHandler OnDeviceErrorsRemoved
         {
             add
@@ -695,7 +679,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New System error(s) are occurred.
         /// </summary>
-        /// <param name="sender"></param>
         public event SystemErrorsAddedEventHandler OnSystemErrorsAdded
         {
             add
@@ -711,7 +694,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// System error(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event SystemErrorsRemovedEventHandler OnSystemErrorsRemoved
         {
             add
@@ -727,7 +709,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Value of the property is updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event ValueUpdatedEventHandler OnValueUpdated
         {
             add
@@ -743,7 +724,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Table values are changed.
         /// </summary>
-        /// <param name="sender"></param>
         public event TableValuesUpdatedEventHandler OnTableValuesUpdated
         {
             add
@@ -759,7 +739,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// New data collector(s) are added.
         /// </summary>
-        /// <param name="sender"></param>
         public event DataCollectorsAddedEventHandler OnDataCollectorsAdded
         {
             add
@@ -775,7 +754,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Data collectors(s) are updated.
         /// </summary>
-        /// <param name="sender"></param>
         public event DataCollectorsUpdatedEventHandler OnDataCollectorsUpdated
         {
             add
@@ -791,7 +769,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Data collector(s) are removed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DataCollectorsRemovedEventHandler OnDataCollectorsRemoved
         {
             add
@@ -807,7 +784,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Data collector(s) state are changed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DataCollectorsStateChangedEventHandler OnDataCollectorStateChanged
         {
             add
@@ -823,7 +799,6 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Device(s) state are changed.
         /// </summary>
-        /// <param name="sender"></param>
         public event DeviceStateChangedEventHandler OnDeviceStateChanged
         {
             add
@@ -1416,6 +1391,54 @@ namespace GuruxAMI.Client
                             else if (it.Data is GXAmiTask)
                             {
                                 GXAmiTask task = it.Data as GXAmiTask;
+                                //Check is received task reply for send task.
+                                if (task.ReplyId != 0)
+                                {
+                                    lock (ExecutedTasks)
+                                    {
+                                        foreach (var item in ExecutedTasks)
+                                        {
+                                            if (item.Key.Id == task.ReplyId)
+                                            {
+                                                //Media is open or closed.
+                                                if (((item.Key.TaskType == TaskType.MediaOpen || item.Key.TaskType == TaskType.MediaClose)
+                                                    && task.TaskType == TaskType.MediaState) ||
+                                                    //Media property is get.
+                                                    (item.Key.TaskType == TaskType.MediaGetProperty && task.TaskType == TaskType.MediaSetProperty) ||
+                                                    //Data is write to the media.
+                                                    (item.Key.TaskType == TaskType.MediaWrite && task.State == TaskState.Succeeded))
+                                                {
+                                                    item.Key.Data = task.Data;                                                    
+                                                    ExecutedTasks.Remove(item.Key);
+                                                    RemoveTask(task);
+                                                    item.Value.Set();
+                                                    break;
+                                                }
+                                            }                                            
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    lock (ExecutedTasks)
+                                    {
+                                        foreach (var item in ExecutedTasks)
+                                        {
+                                            //Media property is set or data is written.
+                                            //DC do not send ACK from this. DC just removes successful action.
+                                            if (((task.TaskType == TaskType.MediaSetProperty || task.TaskType == TaskType.MediaWrite) && 
+                                                task.State == TaskState.Succeeded) && item.Key.Id == task.Id)
+                                            {
+                                                item.Key.Data = task.Data;                                                
+                                                ExecutedTasks.Remove(item.Key);
+                                                RemoveTask(task);
+                                                item.Value.Set();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
                                 if (it.Action == Actions.Add)
                                 {
                                     tasksAdd.Add(task);
@@ -1857,7 +1880,7 @@ namespace GuruxAMI.Client
         {
             try
             {
-                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(null);
+                GXDataCollectorUpdateRequest req = new GXDataCollectorUpdateRequest(GetMACAddress());
                 GXDataCollectorUpdateResponse res = Client.Put(req);                
                 if (DataCollectorGuid == Guid.Empty)
                 {
@@ -1917,6 +1940,10 @@ namespace GuruxAMI.Client
             }
             try
             {
+                if (!baseUr.StartsWith("http://"))
+                {
+                    baseUr = "http://"+ baseUr;
+                }
                 Client = new JsonServiceClient(baseUr);
                 Client.SetCredentials(userName, GXAmiUser.GetCryptedPassword(userName, password));
                 Client.AlwaysSendBasicAuthHeader = true;
@@ -1925,6 +1952,19 @@ namespace GuruxAMI.Client
             {
                 ThrowException(ex);
             }
+        }
+
+        /// <summary>
+        /// Get GuruxAMI server address.
+        /// </summary>
+        /// <returns></returns>
+        public string GetServerAddress()
+        {
+            if (Client == null)
+            {
+                return "";
+            }
+            return Client.BaseUri;
         }
 
         /// <summary>
@@ -2082,7 +2122,7 @@ namespace GuruxAMI.Client
         }
         
         /// <summary>
-        // Add schedules.
+        /// Add schedules.
         /// </summary>
         /// <returns></returns>
         public void AddSchedules(GXAmiSchedule[] schedules)
@@ -2121,7 +2161,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all schedules.
+        /// Get all schedules.
         /// </summary>
         /// <returns></returns>
         public GXAmiSchedule[] GetSchedules()
@@ -2140,7 +2180,7 @@ namespace GuruxAMI.Client
         }
         
         /// <summary>
-        // Get schedule by id.
+        /// Get schedule by id.
         /// </summary>
         /// <returns></returns>
         public GXAmiSchedule GetSchedule(ulong id)
@@ -2160,7 +2200,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get schedules of the user.
+        /// Get schedules of the user.
         /// </summary>
         /// <returns></returns>
         public GXAmiSchedule[] GetSchedules(GXAmiUser user)
@@ -2179,7 +2219,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get schedules of the user group.
+        /// Get schedules of the user group.
         /// </summary>
         /// <returns></returns>
         public GXAmiSchedule[] GetSchedules(GXAmiUserGroup group)
@@ -2198,7 +2238,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device errors.
+        /// Get all device errors.
         /// </summary>
         /// <returns></returns>
         public GXAmiDeviceError[] GetErrors()
@@ -2217,7 +2257,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user device errors.
+        /// Get all user device errors.
         /// </summary>
         /// <returns></returns>
         public GXAmiDeviceError[] GetErrors(GXAmiUser user)
@@ -2236,7 +2276,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user group device errors.
+        /// Get all user group device errors.
         /// </summary>
         /// <returns></returns>
         public GXAmiDeviceError[] GetErrors(GXAmiUserGroup group)
@@ -2255,7 +2295,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device group errors.
+        /// Get all device group errors.
         /// </summary>
         /// <returns></returns>
         public GXAmiDeviceError[] GetErrors(GXAmiDeviceGroup group)
@@ -2274,7 +2314,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device errors.
+        /// Get all device errors.
         /// </summary>
         /// <returns></returns>
         public GXAmiDeviceError[] GetErrors(GXAmiDevice device)
@@ -2309,6 +2349,41 @@ namespace GuruxAMI.Client
 			{
 				ThrowException(ex);
 			}			
+        }
+
+        /// <summary>
+        /// Clear all tasks from selected media.
+        /// </summary>
+        /// <param name="collector">Data collector where media is.</param>
+        /// <param name="name">Name of media.</param>
+        /// <remarks>
+        /// If name is null add media tasks from the DC are removed.
+        /// </remarks>
+        public void MediaClear(GXAmiDataCollector collector, string name)
+        {
+            try
+            {
+                GXTaskDeleteRequest req = new GXTaskDeleteRequest(new GXAmiDataCollector[] { collector }, new string[] { name });
+                GXTaskDeleteResponse res = Client.Post(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }	
+        }
+        
+
+        public void RemoveTasks(GXAmiTask[] tasks)
+        {
+            try
+            {
+                GXTaskDeleteRequest req = new GXTaskDeleteRequest(tasks);
+                GXTaskDeleteResponse res = Client.Post(req);
+            }
+            catch (WebServiceException ex)
+            {
+                ThrowException(ex);
+            }
         }
 
         /// <summary>
@@ -2461,7 +2536,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user tasks.
+        /// Get all user tasks.
         /// </summary>
         /// <returns></returns>
         /// <param name="state">State of task.</param>
@@ -2481,7 +2556,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user group tasks.
+        /// Get all user group tasks.
         /// </summary>
         /// <returns></returns>
         /// <param name="state">State of task.</param>
@@ -2501,7 +2576,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device group tasks.
+        /// Get all device group tasks.
         /// </summary>
         /// <returns></returns>
         /// <param name="state">State of task.</param>
@@ -2521,7 +2596,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device tasks.
+        /// Get all device tasks.
         /// </summary>
         /// <param name="state">State of task.</param>
         /// <returns></returns>
@@ -2560,7 +2635,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user actions.
+        /// Get all user actions.
         /// </summary>
         /// <returns></returns>
         public GXAmiUserActionLog[] GetActions(GXAmiUser user)
@@ -2579,7 +2654,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all user group actions.
+        /// Get all user group actions.
         /// </summary>
         /// <returns></returns>
         public GXAmiUserActionLog[] GetActions(GXAmiUserGroup group)
@@ -2598,7 +2673,7 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device group actions.
+        /// Get all device group actions.
         /// </summary>
         /// <returns></returns>
         public GXAmiUserActionLog[] GetActions(GXAmiDeviceGroup group)
@@ -2617,9 +2692,8 @@ namespace GuruxAMI.Client
         }
 
         /// <summary>
-        // Get all device actions.
+        /// Get all device actions.
         /// </summary>
-        /// <returns></returns>
         public GXAmiUserActionLog[] GetActions(GXAmiDevice device)
         {
             try
@@ -3279,7 +3353,35 @@ namespace GuruxAMI.Client
             {
                 ThrowException(ex);
             }
-        }       
+        }
+        
+        /// <summary>
+        /// Login to GuruxAMI server.
+        /// </summary>
+        /// <param name="info"></param>
+        /// <returns></returns>
+        public static GXAmiClient Login(System.Windows.Forms.IWin32Window owner, GXAmiClientLoginInfo info)
+        {
+            GXAmiLoginForm dlg = new GXAmiLoginForm(info);
+            dlg.ShowDialog(owner);            
+            return dlg.Client;
+        }
+
+        /// <summary>
+        /// Show server settings.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <returns>New settings or null if settings are not changed.</returns>
+        public static string ShowServerSettings(System.Windows.Forms.IWin32Window owner, string address)
+        {
+            HostForm dlg = new HostForm();
+            dlg.Address = address;
+            if (dlg.ShowDialog(owner) != System.Windows.Forms.DialogResult.OK)
+            {
+                return null;
+            }
+            return dlg.Address;
+        }
 
         public static byte[] GetMACAddress()
         {
@@ -3909,21 +4011,40 @@ namespace GuruxAMI.Client
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public GXAmiTask MediaOpen(Guid dataCollector, string media, string settings)
+        public GXAmiTask MediaOpen(Guid dataCollector, string media, string name, string settings, AutoResetEvent handled)
         {
             try
             {
-                if (settings == null)
+                string data = media + "\r\n" + name + "\r\n" + settings.Replace(Environment.NewLine, "");
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaOpen, dataCollector, data);                
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] {task});
+                GXTaskUpdateResponse res;
+                lock (ExecutedTasks)
                 {
-                    settings = "";
+                    res = Client.Put(req);
+                    if (res.Tasks.Length == 0)
+                    {
+                        return null;
+                    }                    
+                    task.Id = res.Tasks[0].Id;
+                    if (handled != null)
+                    {
+                        ExecutedTasks.Add(task, handled);
+                    }
                 }
-                string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] {new GXAmiTask(Instance, TaskType.MediaOpen, dataCollector, data) });
-                GXTaskUpdateResponse res = Client.Put(req);
-                if (res.Tasks.Length == 0)
+                if (handled != null)
                 {
-                    return null;
-                }
+                    handled.WaitOne();
+                    //If task found user has cancel media open.
+                    lock (ExecutedTasks)
+                    {
+                        if (ExecutedTasks.ContainsKey(task))
+                        {
+                            ExecutedTasks.Remove(task);
+                            RemoveTask(task);
+                        }
+                    }
+                }                
                 return res.Tasks[0];
             }
             catch (WebServiceException ex)
@@ -3941,20 +4062,39 @@ namespace GuruxAMI.Client
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public GXAmiTask MediaClose(Guid dataCollector, string media, string settings)
+        public GXAmiTask MediaClose(Guid dataCollector, string media, string name, AutoResetEvent handled)
         {
             try
             {
-                if (settings == null)
+                string data = media + "\r\n" + name;
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaClose, dataCollector, data);
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });                
+                GXTaskUpdateResponse res;
+                lock (ExecutedTasks)
                 {
-                    settings = "";
+                    res = Client.Put(req);
+                    if (res.Tasks.Length == 0)
+                    {
+                        return null;
+                    }
+                    task.Id = res.Tasks[0].Id;
+                    if (handled != null)
+                    {
+                        ExecutedTasks.Add(task, handled);
+                    }
                 }
-                string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaClose, dataCollector, data) });
-                GXTaskUpdateResponse res = Client.Put(req);
-                if (res.Tasks.Length == 0)
+                if (handled != null)
                 {
-                    return null;
+                    handled.WaitOne();
+                    //If task found user has cancel media close.
+                    lock (ExecutedTasks)
+                    {
+                        if (ExecutedTasks.ContainsKey(task))
+                        {
+                            ExecutedTasks.Remove(task);
+                            RemoveTask(task);
+                        }
+                    }
                 }
                 return res.Tasks[0];
             }
@@ -3973,12 +4113,14 @@ namespace GuruxAMI.Client
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public GXAmiTask MediaStateChange(Guid dataCollector, string media, string settings, MediaState state)
+        internal GXAmiTask MediaStateChange(Guid dataCollector, string media, string name, MediaState state, ulong replyId)
         {
             try
             {
-                string data = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + Environment.NewLine + ((int)state).ToString();
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaState, dataCollector, data) });
+                string data = media + "\r\n" + name + "\r\n" + ((int)state).ToString();
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaState, dataCollector, data);
+                task.ReplyId = replyId;
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });
                 GXTaskUpdateResponse res = Client.Put(req);
                 if (res.Tasks.Length == 0)
                 {
@@ -4001,14 +4143,16 @@ namespace GuruxAMI.Client
         {
             try
             {
-                GXErrorUpdateRequest req = new GXErrorUpdateRequest(task.DataCollectorID, task.Id, 1, ex);
+                GXAmiDevice device = new GXAmiDevice();
+                device.Id = task.TargetDeviceID.Value;
+                GXErrorUpdateRequest req = new GXErrorUpdateRequest(device, task.Id, 1, ex);
                 GXErrorUpdateResponse res = Client.Post(req);
             }
             catch (WebServiceException ex2)
             {
                 ThrowException(ex2);
             }
-        }
+        }        
 
         /// <summary>
         /// Get media settings from  the collector.
@@ -4019,7 +4163,7 @@ namespace GuruxAMI.Client
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public object GetMediaProperties(Guid collectorGuid, string media, string settings, string[] propertyNames)
+        public string[] GetMediaProperties(Guid collectorGuid, string media, string name, string[] propertyNames)
         {
             if (propertyNames == null || propertyNames.Length == 0)
             {
@@ -4031,14 +4175,21 @@ namespace GuruxAMI.Client
             }
             try
             {
-                string tmp = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + Environment.NewLine + string.Join(";", propertyNames);
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaGetProperty, collectorGuid, tmp) });
-                GXTaskUpdateResponse res = Client.Put(req);
-                if (res.Tasks.Length == 0)
-                {
-                    return null;
+                string tmp = media + "\r\n" + name + "\r\n" + string.Join(";", propertyNames);
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaGetProperty, collectorGuid, tmp);
+                AutoResetEvent ev = new AutoResetEvent(false);
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });
+                GXTaskUpdateResponse res;
+                lock (ExecutedTasks)
+                {                    
+                    res = Client.Put(req);
+                    task.Id = res.Tasks[0].Id;
+                    ExecutedTasks.Add(task, ev);
                 }
-                return res.Tasks[0].Data;
+                ev.WaitOne();
+                string[] tmp2 = task.Data.Split(new string[] { "\r\n" }, StringSplitOptions.None);
+                string[] result = tmp2[3].Split(';');
+                return result;
             }
             catch (WebServiceException ex)
             {
@@ -4056,7 +4207,7 @@ namespace GuruxAMI.Client
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public void UpdateMediaProperties(Guid collectorGuid, string media, string settings, Dictionary<string, object> properties)
+        internal void UpdateMediaProperties(Guid collectorGuid, string media, string name, Dictionary<string, object> properties)
         {
             if (properties == null || properties.Count == 0)
             {
@@ -4071,7 +4222,7 @@ namespace GuruxAMI.Client
                 StringBuilder sb = new StringBuilder();
                 sb.Append(media);
                 sb.Append(Environment.NewLine);
-                sb.Append(settings.Replace(Environment.NewLine, ""));
+                sb.Append(name);                
                 sb.Append(Environment.NewLine);
                 sb.Append(string.Join(";", properties.Keys.ToArray()));
                 sb.Append(Environment.NewLine);
@@ -4096,13 +4247,24 @@ namespace GuruxAMI.Client
 
         /// <summary>
         /// Set media settings from  the collector.
-        /// </summary>
-        /// <param name="target"></param>
+        /// </summary>        
         /// <remarks>
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public object SetMediaProperties(Guid collectorGuid, string media, string settings, Dictionary<string, object> properties)
+        /// <param name="collectorGuid"></param>
+        /// <param name="media"></param>
+        /// <param name="name"></param>
+        /// <param name="properties"></param>
+        public object SetMediaProperties(Guid collectorGuid, string media, string name, Dictionary<string, object> properties)
+        {
+            return SetMediaProperties(collectorGuid, media, name, properties, 0);
+        }
+
+        /// <summary>
+        /// DC returns asked media setting with this method.
+        /// </summary>        
+        internal object SetMediaProperties(Guid collectorGuid, string media, string name, Dictionary<string, object> properties, ulong replyId)
         {
             if (properties == null || properties.Count == 0)
             {
@@ -4116,11 +4278,11 @@ namespace GuruxAMI.Client
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append(media);
-                sb.Append(Environment.NewLine);
-                sb.Append(settings.Replace(Environment.NewLine, ""));
-                sb.Append(Environment.NewLine);
+                sb.Append("\r\n");
+                sb.Append(name);
+                sb.Append("\r\n");
                 sb.Append(string.Join(";", properties.Keys.ToArray()));
-                sb.Append(Environment.NewLine);
+                sb.Append("\r\n");
                 bool first = true;
                 foreach(object it in properties.Values)
                 {
@@ -4129,14 +4291,26 @@ namespace GuruxAMI.Client
                         sb.Append(";");
                     }
                     first = false;
-                    sb.Append(it.ToString());                    
+                    sb.Append(Convert.ToString(it));
                 }
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaSetProperty, collectorGuid, sb.ToString())});
-                GXTaskUpdateResponse res = Client.Put(req);
-                if (res.Tasks.Length == 0)
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaSetProperty, collectorGuid, sb.ToString());
+                task.ReplyId = replyId;
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task});
+                AutoResetEvent ev;
+                GXTaskUpdateResponse res;
+                lock (ExecutedTasks)
                 {
-                    return null;
+                    res = Client.Put(req);
+                    //Return right a way if DC sends reply to GetMediaProperties.
+                    if (res.Tasks.Length == 0 || replyId != 0)
+                    {
+                        return null;
+                    }
+                    ev = new AutoResetEvent(false);
+                    task.Id = res.Tasks[0].Id;
+                    ExecutedTasks.Add(task, ev);
                 }
+                ev.WaitOne();                
                 return res.Tasks[0].Data;
             }
             catch (WebServiceException ex)
@@ -4149,12 +4323,17 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Write data to the collector.
         /// </summary>
-        /// <param name="target"></param>
         /// <remarks>
         /// For optimization if task is alredy added for the device it is not add again.
         /// In this case task is not added to the queue.
         /// </remarks>
-        public GXAmiTask Write(Guid collectorGuid, string media, string settings, byte[] data, int count, object eop)
+        /// <param name="collectorGuid">Data Collector Guid.</param>
+        /// <param name="media">Madia type</param>
+        /// <param name="name">Media Name</param>
+        /// <param name="data">Send data.</param>
+        /// <param name="handled">Write is handled. If data is sent async set this to null.</param>
+        /// <returns></returns>
+        public GXAmiTask MediaWrite(Guid collectorGuid, string media, string name, byte[] data, AutoResetEvent handled)
         {
             if (data == null || data.Length == 0)
             {
@@ -4164,19 +4343,38 @@ namespace GuruxAMI.Client
             {
                 throw new ArgumentException("Invalid Data Collector Guid.");
             }
-            if (count < 0)
-            {
-                throw new ArgumentException("Invalid Count.");
-            }
             try
             {
-                string tmp = media + Environment.NewLine + settings.Replace(Environment.NewLine, "") + 
-                                    Environment.NewLine + BitConverter.ToString(data).Replace("-", "");
-                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { new GXAmiTask(Instance, TaskType.MediaWrite, collectorGuid, tmp) });
-                GXTaskUpdateResponse res = Client.Put(req);
-                if (res.Tasks.Length == 0)
+                string tmp = media + "\r\n" + name +
+                                    "\r\n" + GXCommon.ToHex(data, false);
+                GXAmiTask task = new GXAmiTask(Instance, TaskType.MediaWrite, collectorGuid, tmp);
+                GXTaskUpdateRequest req = new GXTaskUpdateRequest(new GXAmiTask[] { task });
+                GXTaskUpdateResponse res;
+                lock (ExecutedTasks)
                 {
-                    return null;
+                    res = Client.Put(req);
+                    if (res.Tasks.Length == 0)
+                    {
+                        return null;
+                    }
+                    if (handled != null)
+                    {
+                        task.Id = res.Tasks[0].Id;
+                        ExecutedTasks.Add(task, handled);
+                    }
+                }
+                if (handled != null)
+                {
+                    handled.WaitOne();
+                    //If task found user has cancel media write.
+                    lock (ExecutedTasks)
+                    {
+                        if (ExecutedTasks.ContainsKey(task))
+                        {
+                            ExecutedTasks.Remove(task);
+                            RemoveTask(task);
+                        }
+                    }
                 }
                 return res.Tasks[0];
             }
@@ -4518,21 +4716,32 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Datacollector adds new device error.
         /// </summary>
-        /// <param name="target">Target that cause exception.</param>
+        /// <param name="task">Target that cause exception.</param>
         /// <param name="ex">Occurred exception.</param>
         /// <param name="severity">Exception severity.</param>
         public void AddDeviceError(GXAmiTask task, Exception ex, int severity)
         {
             //Client might be null when app is closing.
             if (Client != null)
-            {
-                ulong id = 0;
+            {                
                 if (task.TargetDeviceID != null)
                 {
-                    id = task.TargetDeviceID.Value;
+                    GXAmiDevice device = new GXAmiDevice();
+                    device.Id = task.TargetDeviceID.Value;
+                    GXErrorUpdateRequest req = new GXErrorUpdateRequest(device, task.Id, severity, ex);
+                    GXErrorUpdateResponse res = Client.Post(req);
                 }
-                GXErrorUpdateRequest req = new GXErrorUpdateRequest(id, task.Id, severity, ex);
-                GXErrorUpdateResponse res = Client.Post(req);
+                else if (task.DataCollectorGuid != Guid.Empty)
+                {
+                    GXAmiDataCollector dc = new GXAmiDataCollector();
+                    dc.Guid = task.DataCollectorGuid;
+                    GXErrorUpdateRequest req = new GXErrorUpdateRequest(dc, task.Id, severity, ex);
+                    GXErrorUpdateResponse res = Client.Post(req);
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException("Target type.");
+                }
             }
         }
 
@@ -4757,8 +4966,7 @@ namespace GuruxAMI.Client
         /// <summary>
         /// Set new trace level for selected Device or Data Collector.
         /// </summary>
-        /// <param name="target"></param>
-        /// <param name="level"></param>
+        /// <param name="traces"></param>
         internal void AddTraces(GXAmiTrace[] traces)
         {
             try
